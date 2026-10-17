@@ -1,0 +1,154 @@
+const SCHEME_TYPES = { http: 'http', https: 'https', socks5: 'socks5', socks5h: 'socks5', socks: 'socks5' };
+
+function isPort(text) {
+  if (!/^\d{1,5}$/.test(text)) return false;
+  const n = Number(text);
+  return n >= 1 && n <= 65535;
+}
+
+// Splits on a separator but keeps an IPv6 host in brackets together: [2001:db8::1]:8080.
+function splitOutsideBrackets(text, separator) {
+  const parts = [];
+  let depth = 0;
+  let current = '';
+  for (const char of text) {
+    if (char === '[') depth++;
+    if (char === ']') depth = Math.max(0, depth - 1);
+    if (char === separator && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
+function decode(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+// Reads the formats proxy providers hand out, so a whole pasted line fills every field.
+//
+// Supported shapes:
+//   host:port
+//   host:port:user:pass        user:pass:host:port
+//   host:port:user             (password left empty)
+//   user:pass@host:port        host:port@user:pass
+//   scheme://host:port         scheme://user:pass@host:port
+//   scheme://host:port:user:pass
+//   host:port user:pass        host port user pass
+//   host:port|user:pass        host;port;user;pass
+//
+// Ambiguity: in user:pass:host:port a numeric password in the second slot would read as
+// host:port:user:pass, which is the far more common provider layout.
+function parseProxyString(input, defaultType = 'http') {
+  let text = String(input || '').trim();
+  text = text.replace(/^["']|["']$/g, '').trim();
+  if (!text) throw new Error('proxy is empty');
+
+  let type = defaultType;
+  const scheme = text.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+  if (scheme) {
+    const key = scheme[1].toLowerCase();
+    if (!Object.hasOwn(SCHEME_TYPES, key)) throw new Error(`unsupported proxy scheme: ${key}`);
+    type = SCHEME_TYPES[key];
+    text = text.slice(scheme[0].length).replace(/\/+$/, '');
+  }
+
+  let host = '';
+  let port = '';
+  let username = '';
+  let password = '';
+
+  // host:port is always two fields, and the second one has to be a real port.
+  const fromHostPort = (value) => {
+    const parts = splitOutsideBrackets(value, ':');
+    if (parts.length !== 2 || !isPort(parts[1])) return false;
+    host = parts[0];
+    port = parts[1];
+    return true;
+  };
+
+  const fromCredentials = (value) => {
+    const [user, ...rest] = splitOutsideBrackets(value, ':');
+    username = user;
+    password = rest.join(':');
+  };
+
+  if (text.includes('@')) {
+    // URL form, where credentials are percent-encoded.
+    const at = text.lastIndexOf('@');
+    const left = text.slice(0, at);
+    const right = text.slice(at + 1);
+    if (fromHostPort(right)) fromCredentials(left);
+    else if (fromHostPort(left)) fromCredentials(right);
+    else throw new Error('expected user:pass@host:port');
+    username = decode(username);
+    password = decode(password);
+  } else if (/\s/.test(text)) {
+    // Space separated forms, which is how some providers print a proxy line.
+    const tokens = text.split(/\s+/).filter(Boolean);
+    if (tokens.length === 2) {
+      if (fromHostPort(tokens[0])) fromCredentials(tokens[1]);
+      else if (fromHostPort(tokens[1])) fromCredentials(tokens[0]);
+      else throw new Error('expected host:port and user:pass');
+    } else if (tokens.length === 4 && isPort(tokens[1])) {
+      [host, port, username, password] = tokens;
+    } else {
+      throw new Error('expected host:port user:pass');
+    }
+  } else {
+    // Some providers separate the four fields with ; or | instead of :.
+    const separator = text.includes('|') ? '|' : text.includes(';') ? ';' : ':';
+    const parts = splitOutsideBrackets(text, separator);
+
+    if (separator !== ':') {
+      if (parts.length === 2) {
+        if (fromHostPort(parts[0])) fromCredentials(parts[1]);
+        else if (fromHostPort(parts[1])) fromCredentials(parts[0]);
+        else throw new Error('expected host:port and user:pass');
+      } else if (parts.length === 4 && isPort(parts[1])) {
+        [host, port, username, password] = parts;
+      } else {
+        throw new Error('expected host:port and user:pass');
+      }
+    } else if (parts.length === 2) {
+      [host, port] = parts;
+    } else if (parts.length === 3 && isPort(parts[1])) {
+      [host, port, username] = parts;
+    } else if (parts.length >= 4 && isPort(parts[1])) {
+      [host, port] = parts;
+      username = parts[2];
+      password = parts.slice(3).join(':');
+    } else if (parts.length >= 4 && isPort(parts[parts.length - 1])) {
+      username = parts[0];
+      password = parts.slice(1, -2).join(':');
+      host = parts[parts.length - 2];
+      port = parts[parts.length - 1];
+    } else if (parts.length === 3 && isPort(parts[2])) {
+      // user:pass:host would be a proxy without a port, which no provider hands out.
+      throw new Error('proxy port is missing');
+    } else {
+      throw new Error('expected host:port or host:port:user:pass');
+    }
+  }
+
+  if (!host || /\s/.test(host)) throw new Error('proxy host is missing');
+  if (!isPort(String(port))) throw new Error('proxy port must be 1-65535');
+
+  return {
+    type,
+    host: host.replace(/^\[|\]$/g, '').trim(),
+    port: Number(port),
+    username: username || '',
+    password: password || '',
+  };
+}
+
+module.exports = { parseProxyString };

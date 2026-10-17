@@ -1,0 +1,81 @@
+const http = require('node:http');
+const { Server } = require('proxy-chain');
+
+function upstreamUrl({ type, host, port, username, password }) {
+  const auth = username ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@` : '';
+  return `${type}://${auth}${host}:${port}`;
+}
+
+// Chromium gets a local proxy with no login. This relay adds the login when it talks to the real proxy,
+// so the password never reaches Chromium and no auth dialog pops up.
+async function startRelay(proxy) {
+  const upstream = upstreamUrl(proxy);
+  const server = new Server({
+    host: '127.0.0.1',
+    port: 0,
+    prepareRequestFunction: () => ({ upstreamProxyUrl: upstream }),
+  });
+  await server.listen();
+  return {
+    proxyServer: `http://127.0.0.1:${server.port}`,
+    close: () => server.close(true),
+  };
+}
+
+// Reads one plain HTTP URL through the relay, so the answer is what the proxy really gives out.
+function requestThroughRelay(relay, url, timeoutMs = 15000) {
+  const { hostname, port } = new URL(relay.proxyServer);
+  return new Promise((resolve, reject) => {
+    const req = http.get(
+      { host: hostname, port, path: url, headers: { Host: new URL(url).host } },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 200) return resolve(data);
+          // 597 is proxy-chain's AUTH_FAILED: the proxy refused the login the relay sent.
+          if (res.statusCode === 407 || res.statusCode === 597) {
+            return reject(new Error('proxy rejected the username or password'));
+          }
+          return reject(new Error(`proxy check returned HTTP ${res.statusCode}`));
+        });
+      },
+    );
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('proxy check timed out')));
+    req.on('error', reject);
+  });
+}
+
+async function checkProxy(proxy, url = 'http://api.ipify.org/?format=json') {
+  const relay = await startRelay(proxy);
+  try {
+    return JSON.parse(await requestThroughRelay(relay, url));
+  } finally {
+    await relay.close().catch(() => {});
+  }
+}
+
+// Timezone, country and coordinates of the exit IP, used by the "Based on IP" fingerprint modes.
+// A failure is not fatal: the caller falls back to the real system values.
+async function lookupGeo(proxy, { timeoutMs = 5000 } = {}) {
+  if (!proxy) return null;
+  const relay = await startRelay(proxy);
+  try {
+    const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
+    const data = JSON.parse(body);
+    if (data.status !== 'success') return null;
+    return {
+      timezone: data.timezone || null,
+      countryCode: data.countryCode || null,
+      latitude: Number.isFinite(data.lat) ? data.lat : null,
+      longitude: Number.isFinite(data.lon) ? data.lon : null,
+    };
+  } catch {
+    return null;
+  } finally {
+    await relay.close().catch(() => {});
+  }
+}
+
+module.exports = { startRelay, upstreamUrl, checkProxy, lookupGeo, requestThroughRelay };
