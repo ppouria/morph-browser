@@ -1,0 +1,8 @@
+node_modules/
+dist/
+vendor/
+
+src/renderer/bundle.js
+src/renderer/bundle.css
+src/renderer/bundle.js.map
+src/renderer/bundle.css.map

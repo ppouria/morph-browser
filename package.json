@@ -1,0 +1,55 @@
+{
+  "name": "browser-manager",
+  "version": "0.2.0",
+  "description": "Run isolated Chromium profiles, each with its own data, proxy and fingerprint",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "npm run build:renderer && electron .",
+    "test": "node --test test/*.test.js",
+    "fetch-chromium": "node scripts/fetch-chromium.js",
+    "dist": "npm run build:renderer && electron-builder",
+    "build:renderer": "node scripts/build-renderer.mjs"
+  },
+  "build": {
+    "appId": "dev.browsermanager.app",
+    "productName": "Browser Manager",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
+  },
+  "dependencies": {
+    "proxy-chain": "^3.0.1"
+  },
+  "devDependencies": {
+    "@ant-design/icons": "^5.6.1",
+    "antd": "^5.29.3",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
