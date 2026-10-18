@@ -3,12 +3,13 @@ import {
   App as AntApp, ConfigProvider, Layout, Menu, Segmented, Space, Typography, theme,
 } from 'antd';
 import {
-  AppstoreOutlined, ApiOutlined, SettingOutlined,
+  AppstoreOutlined, ApiOutlined, DeleteOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import ProfilesPage from './ProfilesPage';
 import ProxiesPage from './ProxiesPage';
 import SettingsPage from './SettingsPage';
+import TrashPage from './TrashPage';
 import ProfileDialog from './ProfileDialog';
 import ProxyModal from './ProxyModal';
 
@@ -18,6 +19,7 @@ const { Title, Text } = Typography;
 const NAV = [
   { key: 'profiles', icon: <AppstoreOutlined />, label: 'Profiles' },
   { key: 'proxies', icon: <ApiOutlined />, label: 'Proxies' },
+  { key: 'trash', icon: <DeleteOutlined />, label: 'Trash' },
 ];
 
 function useSystemDark() {
@@ -38,6 +40,7 @@ function Shell() {
   const [page, setPage] = useState('profiles');
   const [themeMode, setThemeMode] = useState('system');
   const [profiles, setProfiles] = useState([]);
+  const [trash, setTrash] = useState([]);
   const [proxies, setProxies] = useState([]);
   const [majors, setMajors] = useState([]);
   const [kernels, setKernels] = useState([]);
@@ -49,12 +52,14 @@ function Shell() {
   const isDark = themeMode === 'system' ? systemDark : themeMode === 'dark';
 
   const refresh = useCallback(async () => {
-    const [nextProfiles, nextProxies, nextSettings] = await Promise.all([
+    const [nextProfiles, nextProxies, nextSettings, nextTrash] = await Promise.all([
       api.listProfiles(),
       api.listProxies(),
       api.getSettings(),
+      api.listTrash(),
     ]);
     setProfiles(nextProfiles);
+    setTrash(nextTrash);
     setProxies(nextProxies);
     setSettings(nextSettings);
     setThemeMode(nextSettings.theme || 'system');
@@ -95,6 +100,7 @@ function Shell() {
   const pageTitle = useMemo(() => ({
     profiles: { title: 'Profiles', subtitle: 'Isolated Chrome profiles with their own data, proxy and fingerprint.' },
     proxies: { title: 'Proxies', subtitle: 'Saved proxies you can attach to any profile.' },
+    trash: { title: 'Trash', subtitle: 'Deleted profiles stay here until you restore or purge them.' },
     settings: { title: 'Settings', subtitle: 'Everything runs on this machine. Nothing is uploaded.' },
   }[page]), [page]);
 
@@ -194,6 +200,10 @@ function Shell() {
                     await run(() => api.deleteProxy(proxy.id), 'Proxy deleted');
                   }}
                 />
+              )}
+
+              {page === 'trash' && (
+                <TrashPage trash={trash} loading={loading} onRefresh={refresh} />
               )}
 
               {page === 'settings' && settings && (

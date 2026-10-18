@@ -19,8 +19,10 @@ const WEBGPU_MODES = ['webgl', 'real', 'disabled'];
 const FONT_MODES = ['default', 'windows', 'macos', 'linux'];
 const MAX_START_URLS = 10;
 const MAX_COOKIES = 500;
+const MAX_TAGS = 12;
 const SAME_SITE = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None' };
-const DEFAULT_SETTINGS = { chromiumPath: null, theme: 'system', openCheckPage: true };
+const DEFAULT_SETTINGS = { chromiumPath: null, theme: 'system', openCheckPage: true, apiToken: null };
+const TOTP_RE = /^[A-Z2-7]{16,64}$/;
 
 // Every profile carries a fingerprint block. The values decided here are applied at launch by
 // chromium.js (command line flags) and cdp.js (DevTools emulation and the injected script).
@@ -38,6 +40,8 @@ const DEFAULT_FINGERPRINT = {
   noise: { canvas: false, webglImage: false, audioContext: false, mediaDevice: true, clientRects: true, speechVoices: true },
   randomFingerprint: false,
 };
+
+const DEFAULT_PREFS = { blockImages: false, restorePages: true, savePasswords: true };
 
 function pickEnum(value, allowed, fallback, label) {
   const text = String(value ?? '').trim();
@@ -68,7 +72,7 @@ function normalizeProxy(proxy) {
   };
 }
 
-// The version is a major number, like 151. The full build is picked when the profile launches.
+// The version is a major number, like 151, or "latest" for the snapshot kernel.
 function normalizeBrowserVersion(version) {
   const text = String(version || '').trim();
   if (!text) return null;
@@ -245,6 +249,41 @@ function normalizeFingerprint(input) {
   };
 }
 
+function normalizeTags(input) {
+  if (!Array.isArray(input)) return [];
+  const tags = [];
+  for (const value of input) {
+    const tag = String(value || '').trim();
+    if (!tag) continue;
+    if (tag.length > 24) throw new Error('tags are limited to 24 characters');
+    if (!tags.includes(tag)) tags.push(tag);
+  }
+  if (tags.length > MAX_TAGS) throw new Error(`at most ${MAX_TAGS} tags`);
+  return tags;
+}
+
+function normalizeTotp(input) {
+  const secret = String((input && input.secret) || '').replace(/\s+/g, '').toUpperCase();
+  if (!secret) return null;
+  if (!TOTP_RE.test(secret)) throw new Error('the 2FA secret must be a base32 string');
+  return { secret };
+}
+
+function normalizePrefs(input) {
+  const source = input || {};
+  const prefs = {};
+  for (const key of Object.keys(DEFAULT_PREFS)) {
+    prefs[key] = typeof source[key] === 'boolean' ? source[key] : DEFAULT_PREFS[key];
+  }
+  return prefs;
+}
+
+function normalizeLaunchArgs(value) {
+  const text = String(value || '').trim();
+  if (text.length > 2000) throw new Error('launch arguments are too long');
+  return text;
+}
+
 function requireText(value, label, max) {
   const text = String(value || '').trim();
   if (!text) throw new Error(`${label} is required`);
@@ -252,7 +291,7 @@ function requireText(value, label, max) {
   return text;
 }
 
-// Older store files predate the fingerprint fields, so a load fills them in without rejecting the file.
+// Older store files predate the newer fields, so a load fills them in without rejecting the file.
 function withDefaults(profile) {
   return {
     ...profile,
@@ -260,6 +299,12 @@ function withDefaults(profile) {
     os: OS_LIST.includes(profile.os) ? profile.os : 'windows',
     userAgent: normalizeUserAgent(profile.userAgent || { mode: 'auto', value: '' }),
     fingerprint: normalizeFingerprint(profile.fingerprint),
+    tags: Array.isArray(profile.tags) ? profile.tags : [],
+    prefs: normalizePrefs(profile.prefs),
+    launchArgs: profile.launchArgs || '',
+    totp: profile.totp || null,
+    lastOpenedAt: profile.lastOpenedAt || null,
+    deletedAt: profile.deletedAt || null,
     notes: profile.notes || profile.remark || '',
     group: profile.group || '',
   };
@@ -290,9 +335,40 @@ function createStore(dir) {
     fs.renameSync(`${file}.tmp`, file);
   }
 
+  function toProfile(input, existing) {
+    const now = new Date().toISOString();
+    return {
+      id: existing ? existing.id : `p_${crypto.randomBytes(4).toString('hex')}`,
+      name: requireText(input.name, 'profile name', 100),
+      group: String(input.group || '').trim().slice(0, 60),
+      tags: normalizeTags(input.tags),
+      notes: String(input.notes || '').slice(0, 2000),
+      kernel: pickEnum(input.kernel, KERNELS, 'chrome', 'kernel'),
+      os: pickEnum(input.os, OS_LIST, 'windows', 'OS'),
+      userAgent: normalizeUserAgent(input.userAgent),
+      proxy: normalizeProxy(input.proxy),
+      browserVersion: normalizeBrowserVersion(input.browserVersion),
+      startUrls: normalizeStartUrls(input.startUrls),
+      cookies: normalizeCookies(input.cookies),
+      changeIpUrl: normalizeChangeIpUrl(input.changeIpUrl),
+      fingerprint: normalizeFingerprint(input.fingerprint),
+      prefs: normalizePrefs(input.prefs),
+      launchArgs: normalizeLaunchArgs(input.launchArgs),
+      totp: normalizeTotp(input.totp),
+      lastOpenedAt: existing ? existing.lastOpenedAt : null,
+      deletedAt: existing ? existing.deletedAt : null,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+    };
+  }
+
   return {
     listProfiles() {
-      return load().profiles;
+      return load().profiles.filter((profile) => !profile.deletedAt);
+    },
+
+    listTrash() {
+      return load().profiles.filter((profile) => profile.deletedAt);
     },
 
     getProfile(id) {
@@ -302,37 +378,103 @@ function createStore(dir) {
     saveProfile(input) {
       const data = load();
       const existing = input.id ? data.profiles.find((p) => p.id === input.id) : null;
-      const now = new Date().toISOString();
-      const profile = {
-        id: existing ? existing.id : `p_${crypto.randomBytes(4).toString('hex')}`,
-        name: requireText(input.name, 'profile name', 100),
-        group: String(input.group || '').trim().slice(0, 60),
-        notes: String(input.notes || '').slice(0, 2000),
-        kernel: pickEnum(input.kernel, KERNELS, 'chrome', 'kernel'),
-        os: pickEnum(input.os, OS_LIST, 'windows', 'OS'),
-        userAgent: normalizeUserAgent(input.userAgent),
-        proxy: normalizeProxy(input.proxy),
-        browserVersion: normalizeBrowserVersion(input.browserVersion),
-        startUrls: normalizeStartUrls(input.startUrls),
-        cookies: normalizeCookies(input.cookies),
-        changeIpUrl: normalizeChangeIpUrl(input.changeIpUrl),
-        fingerprint: normalizeFingerprint(input.fingerprint),
-        createdAt: existing ? existing.createdAt : now,
-        updatedAt: now,
-      };
-      if (existing) {
-        data.profiles[data.profiles.indexOf(existing)] = profile;
-      } else {
-        data.profiles.push(profile);
-      }
+      const profile = toProfile(input, existing);
+      if (existing) data.profiles[data.profiles.indexOf(existing)] = profile;
+      else data.profiles.push(profile);
       save(data);
       return profile;
     },
 
-    deleteProfile(id) {
+    // Deleting moves the profile to the trash; purging removes it for real.
+    trashProfile(id) {
+      const data = load();
+      const profile = data.profiles.find((p) => p.id === id);
+      if (!profile) throw new Error('profile not found');
+      profile.deletedAt = new Date().toISOString();
+      save(data);
+      return profile;
+    },
+
+    restoreProfile(id) {
+      const data = load();
+      const profile = data.profiles.find((p) => p.id === id);
+      if (!profile) throw new Error('profile not found');
+      profile.deletedAt = null;
+      save(data);
+      return profile;
+    },
+
+    purgeProfile(id) {
       const data = load();
       data.profiles = data.profiles.filter((p) => p.id !== id);
       save(data);
+    },
+
+    duplicateProfile(id) {
+      const data = load();
+      const source = data.profiles.find((p) => p.id === id);
+      if (!source) throw new Error('profile not found');
+      const copy = {
+        ...source,
+        id: `p_${crypto.randomBytes(4).toString('hex')}`,
+        name: `${source.name} copy`.slice(0, 100),
+        lastOpenedAt: null,
+        deletedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      data.profiles.push(copy);
+      save(data);
+      return copy;
+    },
+
+    markOpened(id) {
+      const data = load();
+      const profile = data.profiles.find((p) => p.id === id);
+      if (!profile) return;
+      profile.lastOpenedAt = new Date().toISOString();
+      save(data);
+    },
+
+    exportProfiles(ids) {
+      const data = load();
+      const wanted = Array.isArray(ids) && ids.length ? new Set(ids) : null;
+      const profiles = data.profiles
+        .filter((profile) => !profile.deletedAt && (!wanted || wanted.has(profile.id)))
+        .map(({ deletedAt, ...profile }) => profile);
+      return { version: 1, exportedAt: new Date().toISOString(), profiles };
+    },
+
+    importProfiles(payload) {
+      if (!payload || !Array.isArray(payload.profiles)) throw new Error('not a profile export file');
+      const data = load();
+      const imported = [];
+      for (const entry of payload.profiles) {
+        const profile = toProfile(entry, null);
+        data.profiles.push(profile);
+        imported.push(profile);
+      }
+      save(data);
+      return imported;
+    },
+
+    // Batch edits keep the identity of each profile and only touch the fields provided.
+    updateProfiles(ids, patch) {
+      const data = load();
+      const wanted = new Set(ids);
+      let changed = 0;
+      for (const profile of data.profiles) {
+        if (!wanted.has(profile.id)) continue;
+        if ('group' in patch) profile.group = String(patch.group || '').trim().slice(0, 60);
+        if ('tags' in patch) profile.tags = normalizeTags(patch.tags);
+        if ('proxy' in patch) profile.proxy = normalizeProxy(patch.proxy);
+        if ('kernel' in patch) profile.kernel = pickEnum(patch.kernel, KERNELS, profile.kernel, 'kernel');
+        if ('browserVersion' in patch) profile.browserVersion = normalizeBrowserVersion(patch.browserVersion);
+        profile.updatedAt = new Date().toISOString();
+        changed += 1;
+      }
+      save(data);
+      return changed;
     },
 
     listProxies() {
@@ -378,6 +520,7 @@ function createStore(dir) {
         data.settings.theme = patch.theme;
       }
       if ('openCheckPage' in patch) data.settings.openCheckPage = Boolean(patch.openCheckPage);
+      if ('apiToken' in patch) data.settings.apiToken = patch.apiToken ? String(patch.apiToken) : null;
       save(data);
       return data.settings;
     },
@@ -394,8 +537,12 @@ module.exports = {
   normalizeUserAgent,
   normalizeFingerprint,
   normalizeScreen,
+  normalizeTags,
+  normalizeTotp,
+  normalizePrefs,
   DEFAULT_FINGERPRINT,
   DEFAULT_SETTINGS,
+  DEFAULT_PREFS,
   OS_LIST,
   UA_MODES,
   WEBRTC_MODES,

@@ -104,6 +104,9 @@
 .pm-pane { display: block; }
 
 .pm-section + .pm-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border); }
+.pm-section > .pm-field { margin-bottom: 14px; }
+.pm-section > .pm-field:last-child { margin-bottom: 0; }
+
 .pm-section-title {
   margin-bottom: 14px;
   font-size: 10.5px;
@@ -213,6 +216,9 @@
   font-size: 12px;
   line-height: 1.55;
 }
+
+.pm-totp { display: flex; align-items: baseline; gap: 8px; }
+.pm-totp-code { font-family: var(--mono); font-size: 20px; letter-spacing: 2px; color: var(--text); }
 
 /* select */
 

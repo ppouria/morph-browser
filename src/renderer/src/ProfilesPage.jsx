@@ -1,44 +1,56 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert, App as AntApp, Avatar, Badge, Button, Empty, Input, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography,
+  Alert, App as AntApp, Avatar, Badge, Button, Dropdown, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined, PoweroffOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined, DownloadOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, ImportOutlined, PlusOutlined, PoweroffOutlined, TagsOutlined, UploadOutlined,
+} from '@ant-design/icons';
+import dayjs from 'dayjs';
 import api from './api';
 import { avatarColor, chromeLabel, groupOptions, initialOf } from './format';
 
 const { Text } = Typography;
 
-function errorText(err) {
-  return err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-}
+const errorText = (err) => String(err && err.message ? err.message : err)
+  .replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefresh }) {
   const { message } = AntApp.useApp();
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState();
+  const [tag, setTag] = useState();
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchForm] = Form.useForm();
 
   const groups = useMemo(() => groupOptions(profiles), [profiles]);
+  const tags = useMemo(() => [...new Set(profiles.flatMap((profile) => profile.tags || []))]
+    .sort()
+    .map((value) => ({ value, label: value })), [profiles]);
 
   const rows = useMemo(() => {
     const term = query.trim().toLowerCase();
     return profiles.filter((profile) => {
       if (group && profile.group !== group) return false;
+      if (tag && !(profile.tags || []).includes(tag)) return false;
       if (!term) return true;
       return profile.name.toLowerCase().includes(term)
         || (profile.group || '').toLowerCase().includes(term)
-        || (profile.notes || '').toLowerCase().includes(term);
+        || (profile.notes || '').toLowerCase().includes(term)
+        || (profile.tags || []).some((value) => value.toLowerCase().includes(term));
     });
-  }, [profiles, query, group]);
+  }, [profiles, query, group, tag]);
 
-  const act = async (fn, success) => {
+  const run = async (fn, success) => {
     try {
       await fn();
       await onRefresh();
       if (success) message.success(success);
+      return true;
     } catch (err) {
       message.error(errorText(err));
+      return false;
     }
   };
 
@@ -50,17 +62,51 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       try {
         if (kind === 'launch') await api.launchProfile(id);
         else if (kind === 'stop') await api.stopProfile(id);
-        else await api.deleteProfile(id);
+        else await api.trashProfile(id);
       } catch (err) {
-        const profile = profiles.find((item) => item.id === id);
-        failures.push(`${profile ? profile.name : id}: ${errorText(err)}`);
+        failures.push(errorText(err));
       }
     }
-    await onRefresh();
     setSelected([]);
     setBusy(false);
+    await onRefresh();
     if (failures.length) message.error(failures[0]);
     else message.success(`${ids.length} profile${ids.length > 1 ? 's' : ''} updated`);
+  };
+
+  const applyBatch = async () => {
+    const values = await batchForm.validateFields();
+    const patch = {};
+    if (values.group !== undefined) patch.group = values.group || '';
+    if (values.tags !== undefined) patch.tags = String(values.tags || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    setBusy(true);
+    const ok = await run(() => api.batchUpdate([...selected], patch), 'Profiles updated');
+    setBusy(false);
+    if (ok) {
+      setBatchOpen(false);
+      setSelected([]);
+    }
+  };
+
+  const exportProfiles = async (ids) => {
+    try {
+      const result = await api.exportProfiles(ids);
+      if (!result.canceled) message.success(`${result.count} profile(s) exported`);
+    } catch (err) {
+      message.error(errorText(err));
+    }
+  };
+
+  const importProfiles = async () => {
+    try {
+      const result = await api.importProfiles();
+      if (!result.canceled) {
+        await onRefresh();
+        message.success(`${result.count} profile(s) imported`);
+      }
+    } catch (err) {
+      message.error(errorText(err));
+    }
   };
 
   const columns = [
@@ -68,7 +114,7 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       title: 'Profile',
       dataIndex: 'name',
       render: (_, profile) => (
-        <Space size={10}>
+        <Space size={10} align="start">
           <Avatar shape="square" style={{ background: avatarColor(`${profile.id}${profile.name}`), flex: 'none' }}>
             {initialOf(profile.name)}
           </Avatar>
@@ -76,7 +122,9 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
             <div style={{ fontWeight: 500 }}>{profile.name}</div>
             <Space size={4} wrap>
               {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
+              {profile.tags.map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
               <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
+              {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
               {profile.startUrls.length > 0 && (
                 <Text type="secondary" style={{ fontSize: 12 }}>{profile.startUrls.length} start tab{profile.startUrls.length > 1 ? 's' : ''}</Text>
               )}
@@ -88,18 +136,25 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
     {
       title: 'Proxy',
       dataIndex: 'proxy',
-      width: 260,
+      width: 250,
       render: (proxy) => (proxy ? (
         <Space size={6}>
           <Tag color="geekblue" style={{ marginInlineEnd: 0, textTransform: 'uppercase', fontSize: 10 }}>{proxy.type}</Tag>
-          <Text code style={{ fontSize: 12 }}>{proxy.host}:{proxy.port}</Text>
+          <Text code style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{proxy.host}:{proxy.port}</Text>
         </Space>
       ) : <Text type="secondary">Direct</Text>),
     },
     {
+      title: 'Last opened',
+      dataIndex: 'lastOpenedAt',
+      width: 175,
+      sorter: (a, b) => String(a.lastOpenedAt || '').localeCompare(String(b.lastOpenedAt || '')),
+      render: (value) => (value ? <Text type="secondary">{dayjs(value).format('MMM D, HH:mm')}</Text> : <Text type="secondary">—</Text>),
+    },
+    {
       title: 'Status',
       dataIndex: 'running',
-      width: 170,
+      width: 160,
       render: (running, profile) => (
         <Space direction="vertical" size={0}>
           <Badge status={running ? 'processing' : 'default'} text={running ? 'Running' : 'Stopped'} />
@@ -119,7 +174,7 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
               size="small"
               type={profile.running ? 'default' : 'primary'}
               icon={profile.running ? <PoweroffOutlined /> : null}
-              onClick={() => act(() => (profile.running ? api.stopProfile(profile.id) : api.launchProfile(profile.id)))}
+              onClick={() => run(() => (profile.running ? api.stopProfile(profile.id) : api.launchProfile(profile.id)))}
             >
               {profile.running ? 'Stop' : 'Open'}
             </Button>
@@ -127,17 +182,26 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
           <Tooltip title="Edit">
             <Button size="small" type="text" icon={<EditOutlined />} onClick={() => onEdit(profile)} />
           </Tooltip>
-          <Popconfirm
-            title="Delete this profile?"
-            description="Cookies, cache and browser data are removed with it."
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => act(() => api.deleteProfile(profile.id), 'Profile deleted')}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'duplicate', icon: <TagsOutlined />, label: 'Duplicate' },
+                { key: 'export', icon: <ExportOutlined />, label: 'Export' },
+                { key: 'cookies', icon: <DeleteOutlined />, label: 'Clear cookies' },
+                { type: 'divider' },
+                { key: 'trash', danger: true, icon: <DeleteOutlined />, label: 'Move to trash' },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'duplicate') run(() => api.duplicateProfile(profile.id), 'Profile duplicated');
+                if (key === 'export') exportProfiles([profile.id]);
+                if (key === 'cookies') run(() => api.clearCookies(profile.id), 'Cookies cleared');
+                if (key === 'trash') run(() => api.trashProfile(profile.id), 'Moved to trash');
+              },
+            }}
           >
-            <Tooltip title="Delete">
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
+            <Button size="small" type="text" icon={<EllipsisOutlined />} />
+          </Dropdown>
         </Space>
       ),
     },
@@ -149,19 +213,19 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
         <Input.Search
           allowClear
           placeholder="Search profiles"
-          style={{ width: 240 }}
+          style={{ width: 230 }}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <Select
-          allowClear
-          placeholder="All groups"
-          style={{ width: 160 }}
-          options={groups}
-          value={group}
-          onChange={setGroup}
-        />
+        <Select allowClear placeholder="All groups" style={{ width: 150 }} options={groups} value={group} onChange={setGroup} />
+        <Select allowClear placeholder="All tags" style={{ width: 150 }} options={tags} value={tag} onChange={setTag} />
         <Button type="primary" icon={<PlusOutlined />} onClick={onNew}>New profile</Button>
+        <Tooltip title="Import profiles">
+          <Button icon={<DownloadOutlined />} onClick={importProfiles} />
+        </Tooltip>
+        <Tooltip title="Export all profiles">
+          <Button icon={<UploadOutlined />} onClick={() => exportProfiles([])} />
+        </Tooltip>
       </Space>
 
       {selected.length > 0 && (
@@ -174,14 +238,9 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
             <Space>
               <Button size="small" loading={busy} onClick={() => bulk('launch')}>Launch</Button>
               <Button size="small" loading={busy} onClick={() => bulk('stop')}>Stop</Button>
-              <Popconfirm
-                title={`Delete ${selected.length} profiles?`}
-                okText="Delete"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => bulk('delete')}
-              >
-                <Button size="small" danger loading={busy}>Delete</Button>
-              </Popconfirm>
+              <Button size="small" icon={<TagsOutlined />} onClick={() => setBatchOpen(true)}>Edit</Button>
+              <Button size="small" icon={<ExportOutlined />} onClick={() => exportProfiles([...selected])}>Export</Button>
+              <Button size="small" danger loading={busy} onClick={() => bulk('delete')}>Delete</Button>
             </Space>
           )}
         />
@@ -204,6 +263,25 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
           ),
         }}
       />
+
+      <Modal
+        open={batchOpen}
+        title={`Edit ${selected.length} profile(s)`}
+        okText="Apply"
+        confirmLoading={busy}
+        onOk={applyBatch}
+        onCancel={() => setBatchOpen(false)}
+        destroyOnClose
+      >
+        <Form form={batchForm} layout="vertical" preserve={false} style={{ marginTop: 12 }}>
+          <Form.Item name="group" label="Group" extra="Leave empty to clear the group.">
+            <Input placeholder="Group name" />
+          </Form.Item>
+          <Form.Item name="tags" label="Tags" extra="Comma separated; replaces the current tags.">
+            <Input placeholder="shop, warmup" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }

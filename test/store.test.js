@@ -21,7 +21,13 @@ test('saves, updates and deletes a profile', () => {
   assert.equal(updated.createdAt, p.createdAt);
   assert.equal(store.listProfiles().length, 1);
 
-  store.deleteProfile(p.id);
+  store.trashProfile(p.id);
+  assert.equal(store.listProfiles().some((item) => item.id === p.id), false);
+  assert.equal(store.listTrash().length, 1);
+  store.restoreProfile(p.id);
+  assert.equal(store.getProfile(p.id).id, p.id);
+  store.trashProfile(p.id);
+  store.purgeProfile(p.id);
   assert.equal(store.getProfile(p.id), null);
 });
 
@@ -117,11 +123,11 @@ test('a profile keeps its cookies and change-IP URL', () => {
 
 test('settings: chromium path and theme change independently', () => {
   const store = createStore(tmpDir());
-  assert.deepEqual(store.getSettings(), { chromiumPath: null, theme: 'system', openCheckPage: true });
+  assert.deepEqual(store.getSettings(), { chromiumPath: null, theme: 'system', openCheckPage: true, apiToken: null });
 
   store.setSettings({ chromiumPath: '/usr/bin/chromium' });
   store.setSettings({ theme: 'dark' });
-  assert.deepEqual(store.getSettings(), { chromiumPath: '/usr/bin/chromium', theme: 'dark', openCheckPage: true });
+  assert.deepEqual(store.getSettings(), { chromiumPath: '/usr/bin/chromium', theme: 'dark', openCheckPage: true, apiToken: null });
 
   assert.throws(() => store.setSettings({ theme: 'neon' }), /theme must be/);
 });
@@ -231,4 +237,60 @@ test('the snapshot kernel version is accepted alongside majors', () => {
   assert.equal(normalizeBrowserVersion('latest'), 'latest');
   assert.equal(normalizeBrowserVersion('151'), '151');
   assert.throws(() => normalizeBrowserVersion('nightly'), /major number/);
+});
+
+test('tags, preferences, 2FA and launch arguments are stored', () => {
+  const store = createStore(tmpDir());
+  const p = store.saveProfile({
+    name: 'Tagged',
+    tags: ['shop', 'warmup', 'shop'],
+    launchArgs: '--disable-gpu --lang=en-US',
+    prefs: { blockImages: true, restorePages: false, savePasswords: false },
+    totp: { secret: 'JBSWY3DPEHPK3PXP' },
+  });
+  const stored = store.getProfile(p.id);
+  assert.deepEqual(stored.tags, ['shop', 'warmup']);
+  assert.equal(stored.prefs.blockImages, true);
+  assert.equal(stored.prefs.restorePages, false);
+  assert.equal(stored.totp.secret, 'JBSWY3DPEHPK3PXP');
+  assert.match(stored.launchArgs, /--disable-gpu/);
+
+  assert.throws(() => store.saveProfile({ name: 'x', tags: Array.from({ length: 13 }, (_, i) => `t${i}`) }), /at most 12 tags/);
+  assert.throws(() => store.saveProfile({ name: 'x', totp: { secret: 'not-base32!' } }), /base32/);
+});
+
+test('a profile can be duplicated and batch updated', () => {
+  const store = createStore(tmpDir());
+  const p = store.saveProfile({ name: 'Original', group: 'a' });
+  const copy = store.duplicateProfile(p.id);
+  assert.notEqual(copy.id, p.id);
+  assert.match(copy.name, /copy$/);
+  assert.equal(store.listProfiles().length, 2);
+
+  const changed = store.updateProfiles([p.id, copy.id], { group: 'b', tags: ['x'] });
+  assert.equal(changed, 2);
+  assert.equal(store.getProfile(p.id).group, 'b');
+  assert.deepEqual(store.getProfile(copy.id).tags, ['x']);
+});
+
+test('profiles export and import round-trip', () => {
+  const store = createStore(tmpDir());
+  const p = store.saveProfile({ name: 'Exported', group: 'g', tags: ['t'] });
+  const payload = store.exportProfiles([p.id]);
+  assert.equal(payload.profiles.length, 1);
+  assert.equal(payload.profiles[0].deletedAt, undefined);
+
+  const target = createStore(tmpDir());
+  const imported = target.importProfiles(payload);
+  assert.equal(imported.length, 1);
+  assert.equal(target.listProfiles()[0].name, 'Exported');
+  assert.throws(() => target.importProfiles({}), /not a profile export/);
+});
+
+test('opening a profile records the last opened time', () => {
+  const store = createStore(tmpDir());
+  const p = store.saveProfile({ name: 'Opened' });
+  assert.equal(store.getProfile(p.id).lastOpenedAt, null);
+  store.markOpened(p.id);
+  assert.ok(store.getProfile(p.id).lastOpenedAt);
 });

@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const net = require('node:net');
 const crypto = require('node:crypto');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
 const { startRelay, checkProxy, lookupGeo } = require('./proxy');
@@ -81,6 +81,33 @@ function grantedOrigins(startUrls) {
   return [...origins];
 }
 
+// Preferences that Chromium reads from disk before the first page loads.
+function applyProfilePrefs(dir, prefs) {
+  const defaults = path.join(dir, 'Default');
+  fs.mkdirSync(defaults, { recursive: true });
+  const file = path.join(defaults, 'Preferences');
+  let data = {};
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    data = {};
+  }
+  data.credentials_enable_service = prefs.savePasswords !== false;
+  data.profile = { ...(data.profile || {}), password_manager_enabled: prefs.savePasswords !== false };
+  fs.writeFileSync(file, JSON.stringify(data));
+}
+
+// User-supplied flags are split like a shell would, keeping quoted values together.
+function splitLaunchArgs(text) {
+  const args = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(String(text || ''))) !== null) {
+    args.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return args;
+}
+
 async function launchProfile(id) {
   if (running.has(id) || launching.has(id)) return;
   launching.add(id);
@@ -125,6 +152,10 @@ async function launchProfile(id) {
           ? null
           : userAgentFor(profile.os, major);
     const acceptLanguages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean).join(',');
+    const preferenceFlags = [];
+    if (profile.prefs.blockImages) preferenceFlags.push('--blink-settings=imagesEnabled=false');
+    if (profile.prefs.restorePages === false) preferenceFlags.push('--hide-crash-restore-bubble');
+
     const kernelFlags = native
       ? buildKernelFlags({
         fingerprint: profile.fingerprint,
@@ -137,6 +168,7 @@ async function launchProfile(id) {
       : [];
 
     fs.mkdirSync(profileDir(id), { recursive: true });
+    applyProfilePrefs(profileDir(id), profile.prefs);
     relay = profile.proxy ? await startRelay(profile.proxy) : null;
 
     const emulation = {
@@ -163,7 +195,7 @@ async function launchProfile(id) {
       acceptLanguages: native ? null : acceptLanguages,
       windowSize: resolved.screen,
       webRtcFlags: native ? [] : flagsFor(profile.fingerprint),
-      extraFlags: kernelFlags,
+      extraFlags: [...preferenceFlags, ...kernelFlags, ...splitLaunchArgs(profile.launchArgs)],
       env: !native && resolved.timezone ? { TZ: resolved.timezone } : {},
     };
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can
@@ -200,6 +232,7 @@ async function launchProfile(id) {
     };
     entry.child.on('error', finish);
     entry.child.on('exit', () => finish());
+    store.markOpened(id);
     notify();
   } catch (err) {
     if (relay) relay.close().catch(() => {});
@@ -250,13 +283,82 @@ function setupIpc() {
     if (running.has(id)) throw new Error('stop the profile before deleting it');
     // Only ids the store knows reach the rm below, so a crafted id cannot point it at another folder.
     if (!store.getProfile(id)) throw new Error('profile not found');
-    store.deleteProfile(id);
+    store.purgeProfile(id);
     fs.rmSync(profileDir(id), { recursive: true, force: true });
     notify();
   });
 
   ipcMain.handle('profiles:launch', (_e, id) => launchProfile(id));
   ipcMain.handle('profiles:stop', (_e, id) => stopProfile(id));
+
+  ipcMain.handle('profiles:trash', (_e, id) => {
+    if (running.has(id)) throw new Error('stop the profile before deleting it');
+    store.trashProfile(id);
+    notify();
+  });
+
+  ipcMain.handle('profiles:restore', (_e, id) => {
+    store.restoreProfile(id);
+    notify();
+  });
+
+  ipcMain.handle('profiles:purge', (_e, id) => {
+    if (running.has(id)) throw new Error('stop the profile before deleting it');
+    if (!store.getProfile(id)) throw new Error('profile not found');
+    store.purgeProfile(id);
+    fs.rmSync(profileDir(id), { recursive: true, force: true });
+    notify();
+  });
+
+  ipcMain.handle('profiles:trash-list', () => store.listTrash().map(view));
+
+  ipcMain.handle('profiles:duplicate', (_e, id) => {
+    const copy = store.duplicateProfile(id);
+    notify();
+    return view(copy);
+  });
+
+  ipcMain.handle('profiles:batch-update', (_e, ids, patch) => {
+    const changed = store.updateProfiles(ids, patch);
+    notify();
+    return changed;
+  });
+
+  ipcMain.handle('profiles:export', async (_e, ids) => {
+    const payload = store.exportProfiles(ids);
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export profiles',
+      defaultPath: `browser-manager-profiles-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (canceled || !filePath) return { canceled: true };
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+    return { canceled: false, count: payload.profiles.length, filePath };
+  });
+
+  ipcMain.handle('profiles:import', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import profiles',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (canceled || !filePaths.length) return { canceled: true };
+    const payload = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
+    const imported = store.importProfiles(payload);
+    notify();
+    return { canceled: false, count: imported.length };
+  });
+
+  ipcMain.handle('profiles:clear-cookies', (_e, id) => {
+    if (running.has(id)) throw new Error('stop the profile first');
+    if (!store.getProfile(id)) throw new Error('profile not found');
+    const dir = profileDir(id);
+    for (const file of ['Default/Cookies', 'Default/Cookies-journal', 'Default/Network/Cookies', 'Default/Network/Cookies-journal']) {
+      fs.rmSync(path.join(dir, file), { force: true });
+    }
+    store.saveProfile({ ...store.getProfile(id), cookies: [] });
+    notify();
+  });
 
   ipcMain.handle('proxies:list', () => store.listProxies());
   ipcMain.handle('proxies:save', (_e, input) => {

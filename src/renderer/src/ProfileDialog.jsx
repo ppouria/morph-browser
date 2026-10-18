@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, 
 import { createPortal } from 'react-dom';
 import './dialog.css';
 import api from './api';
+import { totpCode, secondsLeft } from './totp';
 import {
   CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, OS_OPTIONS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
@@ -12,6 +13,26 @@ import {
 const DialogContext = createContext(null);
 const errorText = (err) => String(err && err.message ? err.message : err)
   .replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
+function TotpBadge({ secret }) {
+  const [state, setState] = useState({ code: '', left: 30 });
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      const code = await totpCode(secret);
+      if (!cancelled) setState({ code, left: secondsLeft() });
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [secret]);
+  return (
+    <div className="pm-totp">
+      <span className="pm-totp-code">{state.code || '······'}</span>
+      <span className="pm-hint">{state.left}s</span>
+    </div>
+  );
+}
 
 function Chevron() {
   return (
@@ -300,6 +321,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
         id: profile ? profile.id : undefined,
         name: draft.name,
         group: draft.group,
+        tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
         notes: draft.notes,
         kernel: draft.kernel,
         os: draft.os,
@@ -308,6 +330,9 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
         startUrls: draft.startUrls,
         cookies,
         changeIpUrl: draft.changeIpUrl,
+        launchArgs: draft.launchArgs,
+        prefs: draft.prefs,
+        totp: draft.totpSecret.trim() ? { secret: draft.totpSecret.trim() } : null,
         proxy,
         fingerprint: draft.fingerprint,
       });
@@ -354,6 +379,14 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               value={draft.kernel}
               options={kernelOptions}
               onChange={(value) => patch({ kernel: value, browserVersion: '' })}
+            />
+          </Field>
+          <Field label="Tags" span2 hint="Comma separated. Shown as chips in the profile list.">
+            <input
+              className="pm-input"
+              value={draft.tags}
+              onChange={(event) => patch({ tags: event.target.value })}
+              placeholder="shop, warmup, client-a"
             />
           </Field>
           <Field label="Browser">
@@ -641,6 +674,45 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
+        <div className="pm-section-title">Startup</div>
+        <Field label="Preferences" span2 hint="Applied to the browser profile before the first page loads.">
+          <div className="pm-grid2" style={{ gap: '10px 16px' }}>
+            <label className="pm-check-row">
+              <input type="checkbox" checked={draft.prefs.blockImages} onChange={(event) => patch({ prefs: { ...draft.prefs, blockImages: event.target.checked } })} />
+              Block images
+            </label>
+            <label className="pm-check-row">
+              <input type="checkbox" checked={draft.prefs.restorePages} onChange={(event) => patch({ prefs: { ...draft.prefs, restorePages: event.target.checked } })} />
+              Offer to restore pages
+            </label>
+            <label className="pm-check-row">
+              <input type="checkbox" checked={draft.prefs.savePasswords} onChange={(event) => patch({ prefs: { ...draft.prefs, savePasswords: event.target.checked } })} />
+              Save passwords
+            </label>
+          </div>
+        </Field>
+        <Field label="Launch arguments" hint="Extra Chromium flags, one group per line or space separated.">
+          <textarea
+            className="pm-textarea"
+            rows={2}
+            value={draft.launchArgs}
+            onChange={(event) => patch({ launchArgs: event.target.value })}
+            placeholder="--disable-gpu --lang=en-US"
+            spellCheck={false}
+          />
+        </Field>
+        <Field label="2FA secret" hint="Base32 secret from the account's authenticator setup. The current code is shown in the overview.">
+          <input
+            className="pm-input"
+            value={draft.totpSecret}
+            onChange={(event) => patch({ totpSecret: event.target.value })}
+            placeholder="JBSWY3DPEHPK3PXP"
+            spellCheck={false}
+          />
+        </Field>
+      </div>
+
+      <div className="pm-section">
         <div className="pm-section-title">Storage</div>
         <Field label="Data folder">
           <code className="pm-hint" style={{ wordBreak: 'break-all' }}>
@@ -702,6 +774,12 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               <button type="button" className="pm-btn block" onClick={randomize} style={{ marginBottom: 4 }}>
                 New fingerprint
               </button>
+              {draft.totpSecret.trim() && (
+                <div style={{ marginTop: 14 }}>
+                  <h3 style={{ marginBottom: 6 }}>2FA code</h3>
+                  <TotpBadge secret={draft.totpSecret.trim()} />
+                </div>
+              )}
               <dl>
                 {overview.map(([term, value]) => (
                   <React.Fragment key={term}>
