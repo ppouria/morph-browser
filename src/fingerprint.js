@@ -162,18 +162,20 @@ function seededRandom(seed) {
 
 // The script runs before any page script (Page.addScriptToEvaluateOnNewDocument). Each block is
 // isolated so one unsupported API cannot take the rest of the overrides down with it.
-function buildInjectionScript({ fingerprint, resolved, seed = 1 }) {
+function buildInjectionScript({ fingerprint, resolved, seed = 1, native = false }) {
+  // With the patched kernel the browser already spoofs platform, languages, fonts, WebRTC and the
+  // CPU count, so this script only fills the gaps (screen, memory, geolocation, WebGPU).
   const config = {
-    platform: resolved.platform,
-    language: resolved.displayLanguage,
-    languages: resolved.languages,
+    platform: native ? null : resolved.platform,
+    language: native ? null : resolved.displayLanguage,
+    languages: native ? [] : resolved.languages,
     screen: resolved.screen,
     webgl: fingerprint.webgl.mode === 'custom' ? { vendor: fingerprint.webgl.vendor, renderer: fingerprint.webgl.renderer } : null,
     webgpu: fingerprint.webgpu,
-    webRtc: fingerprint.webRtc,
+    webRtc: native ? 'forward' : fingerprint.webRtc,
     locationBlock: fingerprint.location.mode === 'block',
-    hardware: fingerprint.hardware,
-    fonts: fingerprint.fonts.mode === 'default' ? null : FONT_PRESETS[fingerprint.fonts.mode],
+    hardware: native ? { cpu: null, ram: fingerprint.hardware.ram } : fingerprint.hardware,
+    fonts: native || fingerprint.fonts.mode === 'default' ? null : FONT_PRESETS[fingerprint.fonts.mode],
     noise: fingerprint.noise,
     seed: seed >>> 0,
   };
@@ -183,8 +185,13 @@ function buildInjectionScript({ fingerprint, resolved, seed = 1 }) {
   const define = (obj, key, value) => {
     try { Object.defineProperty(obj, key, { get: () => value, configurable: true }); } catch (e) {}
   };
-  try { define(navigator, 'platform', C.platform); } catch (e) {}
-  try { define(navigator, 'language', C.language); define(navigator, 'languages', Object.freeze(C.languages.slice())); } catch (e) {}
+  try { if (C.platform) define(navigator, 'platform', C.platform); } catch (e) {}
+  try {
+    if (C.language) {
+      define(navigator, 'language', C.language);
+      define(navigator, 'languages', Object.freeze(C.languages.slice()));
+    }
+  } catch (e) {}
   try {
     if (C.screen) {
       const w = C.screen.width, h = C.screen.height;
@@ -388,6 +395,31 @@ function buildInjectionScript({ fingerprint, resolved, seed = 1 }) {
 })();`;
 }
 
+// Flags for the patched kernel. These replace the DevTools emulation: the spoofing happens inside
+// the browser, so pages cannot notice a debugger overriding anything.
+function buildKernelFlags({ fingerprint, resolved, os = 'windows', seed = 1, major = null, customUserAgent = false }) {
+  const args = [
+    `--fingerprint=${(seed >>> 0) % 2147483647}`,
+    `--fingerprint-platform=${os}`,
+  ];
+
+  if (fingerprint.webRtc !== 'real' && fingerprint.webRtc !== 'forward') {
+    args.push('--disable-non-proxied-udp');
+  }
+  if (!customUserAgent) {
+    args.push('--fingerprint-brand=Chrome');
+    if (major) args.push(`--fingerprint-brand-version=${major}.0.0.0`);
+  }
+  if (fingerprint.hardware.cpu) args.push(`--fingerprint-hardware-concurrency=${fingerprint.hardware.cpu}`);
+  if (resolved.timezone) args.push(`--timezone=${resolved.timezone}`);
+  const languages = (resolved.languages || []).filter(Boolean);
+  if (languages.length) {
+    args.push(`--accept-lang=${languages.join(',')}`);
+    args.push(`--lang=${languages[0]}`);
+  }
+  return args;
+}
+
 module.exports = {
   MAJOR_OPTIONS,
   FONT_PRESETS,
@@ -399,5 +431,6 @@ module.exports = {
   resolveFingerprint,
   buildInjectionScript,
   flagsFor,
+  buildKernelFlags,
   seededRandom,
 };

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { MAJOR_RE } = require('./browsers');
+const { KERNELS } = require('./kernels');
 
 const PROXY_TYPES = ['http', 'https', 'socks5'];
 const THEMES = ['system', 'light', 'dark'];
@@ -71,6 +72,7 @@ function normalizeProxy(proxy) {
 function normalizeBrowserVersion(version) {
   const text = String(version || '').trim();
   if (!text) return null;
+  if (text === 'latest') return 'latest';
   if (!MAJOR_RE.test(text)) throw new Error('Chromium version must be a major number, like 151');
   return text;
 }
@@ -254,6 +256,7 @@ function requireText(value, label, max) {
 function withDefaults(profile) {
   return {
     ...profile,
+    kernel: KERNELS.includes(profile.kernel) ? profile.kernel : 'chrome',
     os: OS_LIST.includes(profile.os) ? profile.os : 'windows',
     userAgent: normalizeUserAgent(profile.userAgent || { mode: 'auto', value: '' }),
     fingerprint: normalizeFingerprint(profile.fingerprint),
@@ -305,6 +308,7 @@ function createStore(dir) {
         name: requireText(input.name, 'profile name', 100),
         group: String(input.group || '').trim().slice(0, 60),
         notes: String(input.notes || '').slice(0, 2000),
+        kernel: pickEnum(input.kernel, KERNELS, 'chrome', 'kernel'),
         os: pickEnum(input.os, OS_LIST, 'windows', 'OS'),
         userAgent: normalizeUserAgent(input.userAgent),
         proxy: normalizeProxy(input.proxy),
@@ -397,4 +401,5 @@ module.exports = {
   WEBRTC_MODES,
   SCREEN_MODES,
   THEMES,
+  KERNELS,
 };

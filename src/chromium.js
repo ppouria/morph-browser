@@ -80,6 +80,7 @@ function buildArgs({
   acceptLanguages = null,
   windowSize = null,
   webRtcFlags = [],
+  extraFlags = [],
   noSandbox = false,
 }) {
   const args = [
@@ -101,7 +102,7 @@ function buildArgs({
     args.push(`--window-size=${windowSize.width},${windowSize.height}`);
     args.push('--window-position=40,40');
   }
-  args.push(...webRtcFlags);
+  args.push(...webRtcFlags, ...extraFlags);
   return args.concat(startUrls);
 }
 
@@ -115,10 +116,11 @@ function launch({
   acceptLanguages,
   windowSize,
   webRtcFlags,
+  extraFlags = [],
   env = {},
   noSandbox = false,
 }) {
-  const args = buildArgs({ profileDir, debugPort, proxyServer, startUrls, userAgent, acceptLanguages, windowSize, webRtcFlags, noSandbox });
+  const args = buildArgs({ profileDir, debugPort, proxyServer, startUrls, userAgent, acceptLanguages, windowSize, webRtcFlags, extraFlags, noSandbox });
   const child = spawn(executable, args, { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...env } });
 
   // Chromium explains a refused start on stderr; keeping the tail makes the failure readable.

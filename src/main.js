@@ -7,8 +7,8 @@ const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
 const { startRelay, checkProxy, lookupGeo } = require('./proxy');
 const { parseProxyString } = require('./proxy-parse');
-const { createBrowserManager } = require('./browsers');
-const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor } = require('./fingerprint');
+const { createKernelRegistry } = require('./kernels');
+const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
 const { prepareBrowser } = require('./cdp');
 const { startCheckServer } = require('./check-server');
 
@@ -16,7 +16,7 @@ const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'chromium');
 const running = new Map(); // profile id -> { child, relay, cdp, debugPort, executable }
 const launching = new Set(); // ids still starting up; a download can make this take minutes
 let store;
-let browsers;
+let kernels;
 let browserCache;
 let win;
 let checkServer = null;
@@ -90,8 +90,11 @@ async function launchProfile(id) {
     if (!profile) throw new Error('profile not found');
 
     // A profile with a version set gets that build from the shared cache, downloading it on first use.
+    const kernel = profile.kernel || 'chrome';
+    const native = kernel === 'fingerprint';
+    if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
     const executable = profile.browserVersion
-      ? await browsers.ensureBrowser(profile.browserVersion)
+      ? await kernels.ensureBrowser(kernel, profile.browserVersion)
       : findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR });
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
@@ -105,27 +108,42 @@ async function launchProfile(id) {
       major: profile.browserVersion,
       geo,
     });
-    const script = buildInjectionScript({ fingerprint: profile.fingerprint, resolved, seed: seedFor(profile) });
+    const seed = seedFor(profile);
+    const script = buildInjectionScript({ fingerprint: profile.fingerprint, resolved, seed, native });
 
-    // An automatic UA only overrides the browser when the profile asks for another OS. Otherwise
-    // Chromium's own UA (and Client Hints) stay untouched, which is the most consistent choice.
+    // An automatic UA only overrides the browser when the profile asks for another OS. The patched
+    // kernel sets its own brand and platform, so it only needs the override for a custom UA.
     const hostOs = process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
     const detectedMajor = await detectBrowserMajor(executable);
-    const userAgent = profile.userAgent.mode === 'custom'
+    const major = profile.browserVersion && profile.browserVersion !== 'latest' ? profile.browserVersion : detectedMajor;
+    const customUserAgent = profile.userAgent.mode === 'custom';
+    const userAgent = customUserAgent
       ? profile.userAgent.value
-      : profile.os === hostOs
+      : native
         ? null
-        : userAgentFor(profile.os, profile.browserVersion || detectedMajor);
+        : profile.os === hostOs
+          ? null
+          : userAgentFor(profile.os, major);
     const acceptLanguages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean).join(',');
+    const kernelFlags = native
+      ? buildKernelFlags({
+        fingerprint: profile.fingerprint,
+        resolved,
+        os: profile.os,
+        seed,
+        major,
+        customUserAgent,
+      })
+      : [];
 
     fs.mkdirSync(profileDir(id), { recursive: true });
     relay = profile.proxy ? await startRelay(profile.proxy) : null;
 
     const emulation = {
-      timezone: resolved.timezone,
-      locale: resolved.displayLanguage,
+      timezone: native ? null : resolved.timezone,
+      locale: native ? null : resolved.displayLanguage,
       userAgent,
-      acceptLanguage: acceptLanguages,
+      acceptLanguage: native ? null : acceptLanguages,
       platform: resolved.platform,
       userAgentMetadata: userAgent ? uaMetadata({ userAgent, os: profile.os }) : null,
       geolocation: resolved.location
@@ -142,10 +160,11 @@ async function launchProfile(id) {
       proxyServer: relay && relay.proxyServer,
       startUrls: [],
       userAgent,
-      acceptLanguages,
+      acceptLanguages: native ? null : acceptLanguages,
       windowSize: resolved.screen,
-      webRtcFlags: flagsFor(profile.fingerprint),
-      env: resolved.timezone ? { TZ: resolved.timezone } : {},
+      webRtcFlags: native ? [] : flagsFor(profile.fingerprint),
+      extraFlags: kernelFlags,
+      env: !native && resolved.timezone ? { TZ: resolved.timezone } : {},
     };
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can
     // reach are visible right after launch.
@@ -250,20 +269,23 @@ function setupIpc() {
     notify();
   });
 
-  ipcMain.handle('browsers:majors', () => {
-    const installed = new Set(browsers.listInstalled().map((version) => version.split('.')[0]));
-    return MAJOR_OPTIONS.map((major) => ({ major, installed: installed.has(major) }));
+  ipcMain.handle('kernels:list', () => kernels.listKernels());
+  ipcMain.handle('browsers:majors', async (_e, kernel = 'chrome') => {
+    const installed = new Set(kernels.listInstalled(kernel).map((version) => version.split('.')[0]));
+    const majors = kernel === 'chrome'
+      ? MAJOR_OPTIONS
+      : await kernels.listVersions(kernel).catch(() => []);
+    return majors.map((major) => ({ major, installed: installed.has(major) }));
   });
-  ipcMain.handle('browsers:versions', () => browsers.listVersions());
-  ipcMain.handle('browsers:installed', () => browsers.listInstalled());
-  ipcMain.handle('browsers:remove', (_e, version) => {
+  ipcMain.handle('browsers:versions', (_e, kernel = 'chrome') => kernels.listVersions(kernel));
+  ipcMain.handle('browsers:installed', (_e, kernel = 'chrome') => kernels.listInstalled(kernel));
+  ipcMain.handle('browsers:remove', (_e, kernel = 'chrome', version) => {
     // A build a running profile is using stays on disk until that profile stops.
+    const usedDir = path.join(browserCache, kernel, version) + path.sep;
     for (const entry of running.values()) {
-      if (entry.executable.startsWith(path.join(browserCache, version) + path.sep)) {
-        throw new Error('a running profile uses this Chromium build');
-      }
+      if (entry.executable.startsWith(usedDir)) throw new Error('a running profile uses this build');
     }
-    browsers.removeInstalled(version);
+    kernels.removeInstalled(kernel, version);
   });
 
   ipcMain.handle('proxy:parse', (_e, text, defaultType) => parseProxyString(text, defaultType));
@@ -323,7 +345,7 @@ if (!app.requestSingleInstanceLock()) {
       return null;
     });
     browserCache = path.join(app.getPath('userData'), 'browsers');
-    browsers = createBrowserManager({
+    kernels = createKernelRegistry({
       cacheDir: browserCache,
       onProgress: (progress) => {
         if (win && !win.isDestroyed()) win.webContents.send('browsers:progress', progress);
