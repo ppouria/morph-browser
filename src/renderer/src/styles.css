@@ -1,0 +1,7 @@
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.ant-table-row { cursor: default; }
+.ant-descriptions-item-label { white-space: nowrap; }
