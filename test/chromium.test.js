@@ -24,12 +24,14 @@ test('uses the dev download pointed to by vendor executable.txt', () => {
 });
 
 test('linux looks for chromium names on PATH', () => {
+  const dirs = ['/bin', '/usr/bin'];
+  const wanted = path.join('/usr/bin', 'google-chrome');
   const found = findChromium({
     platform: 'linux',
-    env: { PATH: '/bin:/usr/bin' },
-    exists: (p) => p === '/usr/bin/google-chrome',
+    env: { PATH: dirs.join(path.delimiter) },
+    exists: (candidate) => candidate === wanted,
   });
-  assert.equal(found, '/usr/bin/google-chrome');
+  assert.equal(found, wanted);
 });
 
 test('windows checks the Program Files install', () => {
