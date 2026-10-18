@@ -226,3 +226,9 @@ test('the check-page toggle can be turned off', () => {
   store.setSettings({ openCheckPage: false });
   assert.equal(store.getSettings().openCheckPage, false);
 });
+
+test('the snapshot kernel version is accepted alongside majors', () => {
+  assert.equal(normalizeBrowserVersion('latest'), 'latest');
+  assert.equal(normalizeBrowserVersion('151'), '151');
+  assert.throws(() => normalizeBrowserVersion('nightly'), /major number/);
+});

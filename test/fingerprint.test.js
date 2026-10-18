@@ -7,6 +7,7 @@ const {
   resolveFingerprint,
   buildInjectionScript,
   flagsFor,
+  buildKernelFlags,
   MAJOR_OPTIONS,
 } = require('../src/fingerprint');
 const { normalizeFingerprint, DEFAULT_FINGERPRINT } = require('../src/store');
@@ -165,4 +166,42 @@ test('the CDP overrides enable Page before registering the script', async () => 
   assert.ok(enableIndex >= 0, 'Page.enable is sent');
   assert.ok(addIndex > enableIndex, 'the script is registered after Page.enable');
   assert.ok(calls.includes('Emulation.setUserAgentOverride'));
+});
+
+test('kernel flags carry the native spoofing settings', () => {
+  const fingerprint = normalizeFingerprint({
+    webRtc: 'proxy-udp',
+    hardware: { cpu: 8, ram: 8 },
+    timezone: { mode: 'custom', value: 'Europe/Berlin' },
+    language: { mode: 'custom', value: 'de-DE' },
+  });
+  const resolved = resolveFingerprint(fingerprint, { os: 'windows', major: '150' });
+  const args = buildKernelFlags({ fingerprint, resolved, os: 'windows', seed: 12345, major: '150' });
+
+  assert.ok(args.includes('--fingerprint=12345'));
+  assert.ok(args.includes('--fingerprint-platform=windows'));
+  assert.ok(args.includes('--fingerprint-brand=Chrome'));
+  assert.ok(args.includes('--fingerprint-brand-version=150.0.0.0'));
+  assert.ok(args.includes('--fingerprint-hardware-concurrency=8'));
+  assert.ok(args.includes('--timezone=Europe/Berlin'));
+  assert.ok(args.includes('--accept-lang=de-DE'));
+  assert.ok(args.includes('--disable-non-proxied-udp'));
+});
+
+test('a custom user-agent drops the brand flags and real WebRTC drops the UDP policy', () => {
+  const fingerprint = normalizeFingerprint({ webRtc: 'real' });
+  const resolved = resolveFingerprint(fingerprint, { os: 'macos' });
+  const args = buildKernelFlags({ fingerprint, resolved, os: 'macos', seed: 7, customUserAgent: true });
+  assert.ok(!args.some((arg) => arg.startsWith('--fingerprint-brand')));
+  assert.ok(!args.includes('--disable-non-proxied-udp'));
+});
+
+test('the native kernel script leaves platform and language to the browser', () => {
+  const fingerprint = normalizeFingerprint({});
+  const resolved = resolveFingerprint(fingerprint, { os: 'windows', major: '150' });
+  const script = buildInjectionScript({ fingerprint, resolved, seed: 3, native: true });
+  assert.match(script, /"platform":null/);
+  assert.match(script, /"language":null/);
+  assert.match(script, /"fonts":null/);
+  assert.match(script, /if \(C\.platform\)/);
 });
