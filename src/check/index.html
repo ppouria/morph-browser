@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src * data:; connect-src *">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connection check</title>
+  <link rel="stylesheet" href="check.css">
+</head>
+<body>
+  <main class="page">
+    <header class="head">
+      <div>
+        <h1>Connection check</h1>
+        <p class="muted">What this profile looks like to the outside world.</p>
+      </div>
+      <div class="head-actions">
+        <span id="stamp" class="muted mono"></span>
+        <button id="refresh" class="btn">Run again</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card ip-card">
+        <h2>Exit IP</h2>
+        <div id="ip" class="ip mono">…</div>
+        <div id="geo" class="geo">Looking up location…</div>
+        <dl id="ip-detail" class="details"></dl>
+      </article>
+
+      <article class="card">
+        <h2>Browser identity</h2>
+        <dl id="identity" class="details"></dl>
+      </article>
+
+      <article class="card">
+        <h2>WebRTC leak</h2>
+        <div id="webrtc" class="webrtc">Testing…</div>
+        <p class="muted small">Public and local addresses Chrome exposes to a page.</p>
+      </article>
+
+      <article class="card services-card">
+        <h2>Service reachability</h2>
+        <p class="muted small">Fetched from this browser, so the proxy and DNS of the profile are used.</p>
+        <div id="services" class="services"></div>
+      </article>
+    </section>
+
+    <footer class="foot">
+      <button id="copy" class="btn ghost">Copy summary</button>
+      <span id="copy-hint" class="muted small"></span>
+    </footer>
+  </main>
+  <script src="check.js"></script>
+</body>
+</html>
