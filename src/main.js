@@ -1,7 +1,12 @@
+const dns = require('node:dns');
 const path = require('node:path');
 const fs = require('node:fs');
 const net = require('node:net');
 const crypto = require('node:crypto');
+
+// Some networks advertise IPv6 but cannot route it, which makes downloads hang. Prefer IPv4 for
+// every lookup the process makes.
+dns.setDefaultResultOrder('ipv4first');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
