@@ -7,14 +7,22 @@ import api from './api';
 
 const { Text, Paragraph } = Typography;
 
-export default function SettingsPage({ settings, themeMode, onTheme, onSettings, notify }) {
+export default function SettingsPage({ settings, kernels = [], themeMode, onTheme, onSettings, notify }) {
   const [path, setPath] = useState(settings.chromiumPath || '');
   const [builds, setBuilds] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const loadBuilds = () => api.listInstalledBuilds().then(setBuilds).catch(() => setBuilds([]));
+  const loadBuilds = async () => {
+    const list = kernels.length ? kernels : [{ id: 'chrome', label: 'Google Chrome' }];
+    const results = await Promise.all(list.map((kernel) => api.listInstalledBuilds(kernel.id).catch(() => [])));
+    setBuilds(list.flatMap((kernel, index) => results[index].map((version) => ({
+      kernel: kernel.id,
+      label: kernel.label,
+      version,
+    }))));
+  };
 
-  useEffect(() => { loadBuilds(); }, []);
+  useEffect(() => { loadBuilds(); }, [kernels.length]);
   useEffect(() => { setPath(settings.chromiumPath || ''); }, [settings.chromiumPath]);
 
   const savePath = async () => {
@@ -30,11 +38,11 @@ export default function SettingsPage({ settings, themeMode, onTheme, onSettings,
     }
   };
 
-  const removeBuild = async (version) => {
+  const removeBuild = async (build) => {
     try {
-      await api.removeBuild(version);
+      await api.removeBuild(build.kernel, build.version);
       await loadBuilds();
-      notify.success(`Chrome ${version} removed`);
+      notify.success('Build removed');
     } catch (err) {
       notify.error(err.message);
     }
@@ -107,13 +115,16 @@ export default function SettingsPage({ settings, themeMode, onTheme, onSettings,
             size="small"
             dataSource={builds}
             locale={{ emptyText: 'Nothing downloaded yet' }}
-            renderItem={(version) => (
+            renderItem={(build) => (
               <List.Item
                 actions={[
-                  <Button key="remove" size="small" danger icon={<DeleteOutlined />} onClick={() => removeBuild(version)} />,
+                  <Button key="remove" size="small" danger icon={<DeleteOutlined />} onClick={() => removeBuild(build)} />,
                 ]}
               >
-                <Text code>Chrome {version}</Text>
+                <Space>
+                  <Text code>{build.version === 'latest' ? 'Latest snapshot' : `Chrome ${build.version}`}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>{build.label || build.kernel}</Text>
+                </Space>
               </List.Item>
             )}
           />

@@ -40,6 +40,7 @@ function Shell() {
   const [profiles, setProfiles] = useState([]);
   const [proxies, setProxies] = useState([]);
   const [majors, setMajors] = useState([]);
+  const [kernels, setKernels] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState({ open: false, profile: null });
@@ -63,6 +64,7 @@ function Shell() {
   useEffect(() => {
     refresh().catch((err) => message.error(err.message));
     api.listMajors().then(setMajors).catch(() => setMajors([]));
+    api.listKernels().then(setKernels).catch(() => setKernels([]));
     api.onChange(() => refresh().catch(() => {}));
   }, [refresh, message]);
 
@@ -177,12 +179,7 @@ function Shell() {
                   majors={majors}
                   onNew={() => openEditor(null)}
                   onEdit={openEditor}
-                  onLaunch={(id) => run(() => api.launchProfile(id))}
-                  onStop={(id) => run(() => api.stopProfile(id))}
-                  onDelete={async (profile) => {
-                    if (!window.confirm(`Delete "${profile.name}" and all of its browser data?`)) return;
-                    await run(() => api.deleteProfile(profile.id), 'Profile deleted');
-                  }}
+                  onRefresh={refresh}
                 />
               )}
 
@@ -202,6 +199,7 @@ function Shell() {
               {page === 'settings' && settings && (
                 <SettingsPage
                   settings={settings}
+                  kernels={kernels}
                   themeMode={themeMode}
                   onTheme={handleTheme}
                   onSettings={setSettings}
@@ -217,6 +215,7 @@ function Shell() {
           profile={editor.profile}
           proxies={proxies}
           majors={majors}
+          kernels={kernels}
           settings={settings}
           isDark={isDark}
           onClose={() => setEditor({ open: false, profile: null })}

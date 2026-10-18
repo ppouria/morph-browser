@@ -138,13 +138,14 @@ function Field({ label, children, span2 = false, hint }) {
   );
 }
 
-export default function ProfileDialog({ open, profile, proxies, majors, settings, isDark, onClose, onSaved }) {
+export default function ProfileDialog({ open, profile, proxies, majors, kernels, settings, isDark, onClose, onSaved }) {
   const [draft, setDraft] = useState(blankDraft);
   const [tab, setTab] = useState('general');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [check, setCheck] = useState(null);
   const [rootEl, setRootEl] = useState(null);
+  const [builds, setBuilds] = useState(majors);
   const nameRef = useRef(null);
 
   useEffect(() => {
@@ -168,22 +169,43 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
     if (open && nameRef.current) setTimeout(() => nameRef.current.focus(), 30);
   }, [open]);
 
+  // The version list depends on the kernel: Chrome ships fixed majors, the patched kernel ships
+  // releases on GitHub.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api.listMajors(draft.kernel)
+      .then((list) => { if (!cancelled) setBuilds(list); })
+      .catch(() => { if (!cancelled) setBuilds([]); });
+    return () => { cancelled = true; };
+  }, [open, draft.kernel]);
+
   const patch = (values) => setDraft((current) => ({ ...current, ...values }));
   const patchFp = (values) => setDraft((current) => ({ ...current, fingerprint: { ...current.fingerprint, ...values } }));
 
+  const kernelOptions = useMemo(() => (kernels.length ? kernels : [
+    { id: 'chrome', label: 'Google Chrome' },
+    { id: 'fingerprint', label: 'Fingerprint Chromium' },
+  ]).map((kernel) => ({ value: kernel.id, label: kernel.label })), [kernels]);
+
+  const kernelDescription = useMemo(() => {
+    const found = (kernels || []).find((kernel) => kernel.id === draft.kernel);
+    return found ? found.description : '';
+  }, [kernels, draft.kernel]);
+
   const versionOptions = useMemo(() => [
-    { value: '', label: 'System Chrome' },
-    ...majors.map(({ major, installed }) => ({
+    { value: '', label: draft.kernel === 'chrome' ? 'System Chrome' : 'Choose a build' },
+    ...builds.map(({ major, installed }) => ({
       value: major,
-      label: `Chrome ${major}`,
+      label: major === 'latest' ? 'Latest snapshot' : `Chrome ${major}`,
       note: installed ? 'installed' : '',
     })),
-  ], [majors]);
+  ], [builds, draft.kernel]);
 
   const uaPresets = useMemo(() => [
     { value: '', label: 'Automatic (browser default)' },
-    ...majors.slice(0, 8).map(({ major }) => ({ value: major, label: `Chrome ${major} on ${OS_LABELS[draft.os]}` })),
-  ], [majors, draft.os]);
+    ...builds.slice(0, 8).map(({ major }) => ({ value: major, label: `Chrome ${major} on ${OS_LABELS[draft.os]}` })),
+  ], [builds, draft.os]);
 
   const savedProxyOptions = proxies.map((proxy) => ({
     value: proxy.id,
@@ -279,6 +301,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
         name: draft.name,
         group: draft.group,
         notes: draft.notes,
+        kernel: draft.kernel,
         os: draft.os,
         userAgent: { mode: draft.uaValue.trim() ? 'custom' : 'auto', value: draft.uaValue.trim() },
         browserVersion: draft.browserVersion || null,
@@ -300,6 +323,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
 
   const fp = draft.fingerprint;
   const overview = [
+    ['Kernel', (kernels || []).find((kernel) => kernel.id === draft.kernel)?.label || draft.kernel],
     ['Browser', draft.browserVersion ? `Chrome ${draft.browserVersion}` : 'System Chrome'],
     ['OS', OS_LABELS[draft.os]],
     ['User-Agent', draft.uaValue.trim() ? 'Custom' : 'Browser default'],
@@ -324,6 +348,13 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
           </Field>
           <Field label="Group">
             <input className="pm-input" value={draft.group} maxLength={60} onChange={(event) => patch({ group: event.target.value })} placeholder="Optional" />
+          </Field>
+          <Field label="Kernel" hint={kernelDescription}>
+            <PmSelect
+              value={draft.kernel}
+              options={kernelOptions}
+              onChange={(value) => patch({ kernel: value, browserVersion: '' })}
+            />
           </Field>
           <Field label="Browser">
             <PmSelect value={draft.browserVersion} options={versionOptions} onChange={(value) => patch({ browserVersion: value })} />
@@ -438,6 +469,15 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
 
   const fingerprint = (
     <>
+      {draft.kernel === 'fingerprint' && (
+        <div className="pm-section">
+          <div className="pm-note">
+            This kernel spoofs the user-agent, platform, fonts, canvas, audio, WebRTC and CPU count
+            inside the browser. Screen size, device memory, geolocation and a custom user-agent are
+            still applied by the app.
+          </div>
+        </div>
+      )}
       <div className="pm-section">
         <div className="pm-section-title">WebRTC</div>
         <div className="pm-grid2">
@@ -549,6 +589,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, settings
                   <input
                     type="checkbox"
                     checked={Boolean(fp.noise[option.value])}
+                    disabled={draft.kernel === 'fingerprint'}
                     onChange={(event) => patchFp({ noise: { ...fp.noise, [option.value]: event.target.checked } })}
                   />
                   {option.label}

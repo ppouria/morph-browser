@@ -1,5 +1,12 @@
 // Option lists and draft builders shared by the profile dialog.
 
+export const KERNEL_OPTIONS = [
+  { value: 'chrome', label: 'Google Chrome', note: 'official build' },
+  { value: 'fingerprint', label: 'Fingerprint Chromium', note: 'native spoofing' },
+];
+
+export const KERNEL_LABELS = { chrome: 'Google Chrome', fingerprint: 'Fingerprint Chromium' };
+
 export const OS_OPTIONS = [
   { value: 'windows', label: 'Windows' },
   { value: 'macos', label: 'macOS' },
@@ -137,6 +144,7 @@ export function blankDraft() {
     name: '',
     group: '',
     notes: '',
+    kernel: 'chrome',
     os: 'windows',
     uaValue: '',
     browserVersion: '',
@@ -161,6 +169,7 @@ export function draftFromProfile(profile) {
     name: profile.name,
     group: profile.group || '',
     notes: profile.notes || '',
+    kernel: profile.kernel || 'chrome',
     os: profile.os || 'windows',
     uaValue: profile.userAgent && profile.userAgent.mode === 'custom' ? profile.userAgent.value : '',
     browserVersion: profile.browserVersion || '',
