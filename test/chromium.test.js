@@ -96,3 +96,14 @@ test('a binary that will not report a version falls back to null', async () => {
   assert.equal(await detectBrowserMajor('/tmp/chrome-b', { run: async () => { throw new Error('nope'); } }), null);
   assert.equal(await detectBrowserMajor('/tmp/chrome-c', { run: async () => ({ stdout: 'no version here' }) }), null);
 });
+
+test('a mac app bundle resolves to its executable', () => {
+  const { resolveMacBundle } = require('../src/chromium');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pb-app-'));
+  const bundle = path.join(dir, 'Google Chrome.app');
+  const exe = path.join(bundle, 'Contents', 'MacOS', 'Google Chrome');
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  fs.writeFileSync(exe, '');
+  assert.equal(resolveMacBundle(bundle), exe);
+  assert.equal(resolveMacBundle(path.join(dir, 'missing.app')), null);
+});

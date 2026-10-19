@@ -1,22 +1,35 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const PROGRAM_FILES = process.env.PROGRAMFILES || 'C:\\Program Files';
+const PROGRAM_FILES_X86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+
 const CANDIDATE_PATHS = {
   thorium: {
     linux: ['/usr/bin/thorium-browser', '/usr/bin/thorium', '/opt/thorium/thorium', '/opt/thorium-browser/thorium'],
     win32: [
       path.join(process.env.LOCALAPPDATA || '', 'Thorium', 'Application', 'thorium.exe'),
-      'C:\\Program Files\\Thorium\\Application\\thorium.exe',
+      path.join(PROGRAM_FILES, 'Thorium', 'Application', 'thorium.exe'),
     ],
     darwin: ['/Applications/Thorium.app/Contents/MacOS/Thorium'],
   },
   brave: {
     linux: ['/usr/bin/brave-browser', '/usr/bin/brave', '/opt/brave.com/brave/brave'],
     win32: [
-      'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+      path.join(PROGRAM_FILES, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(PROGRAM_FILES_X86, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
       path.join(process.env.LOCALAPPDATA || '', 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
     ],
     darwin: ['/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'],
+  },
+  firefox: {
+    linux: ['/usr/bin/firefox', '/usr/lib/firefox/firefox'],
+    win32: [
+      path.join(PROGRAM_FILES, 'Mozilla Firefox', 'firefox.exe'),
+      path.join(PROGRAM_FILES_X86, 'Mozilla Firefox', 'firefox.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Mozilla Firefox', 'firefox.exe'),
+    ],
+    darwin: ['/Applications/Firefox.app/Contents/MacOS/firefox'],
   },
 };
 
@@ -36,8 +49,14 @@ function onPath(names) {
 }
 
 // Some Chromium forks publish no stable download API, so the kernel uses an installed copy.
+const PATH_NAMES = {
+  thorium: ['thorium-browser', 'thorium', 'thorium.exe'],
+  brave: ['brave-browser', 'brave', 'brave.exe'],
+  firefox: ['firefox', 'firefox.exe'],
+};
+
 function detectExecutable(kind, platform = process.platform) {
-  const names = kind === 'brave' ? ['brave-browser', 'brave'] : ['thorium-browser', 'thorium'];
+  const names = PATH_NAMES[kind] || PATH_NAMES.thorium;
   const fromPath = onPath(names);
   if (fromPath) return fromPath;
   const paths = (CANDIDATE_PATHS[kind] || {})[platform] || [];

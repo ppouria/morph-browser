@@ -27,7 +27,8 @@ function applyAutoStart({ enabled, app, isPackaged }) {
     const exec = isPackaged
       ? `"${process.execPath}"`
       : `"${process.execPath}" "${path.join(__dirname, '..')}" --no-sandbox`;
-    const icon = path.join(__dirname, '..', 'build', 'icon.png');
+    // Inside a packaged app asar paths are not usable by the desktop shell, so the installed icon name is used.
+    const icon = isPackaged ? 'morph-browser' : path.join(__dirname, '..', 'build', 'icon.png');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(file, autostartEntry({ exec, icon }));
     return;

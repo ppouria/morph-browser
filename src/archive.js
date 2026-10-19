@@ -45,12 +45,42 @@ async function extractArchive(file, kind, dir, platform) {
     await execFileAsync('tar', ['-xjf', file, '-C', dir], { timeout: 240000 });
     return;
   }
+  if (kind === 'targz') {
+    await execFileAsync('tar', ['-xzf', file, '-C', dir], { timeout: 240000 });
+    return;
+  }
+  if (kind === 'tarzst') {
+    await execFileAsync('tar', ['--zstd', '-xf', file, '-C', dir], { timeout: 240000 });
+    return;
+  }
   if (kind === 'zip') {
     try {
       await execFileAsync('unzip', ['-q', file, '-d', dir], { timeout: 240000 });
+      return;
     } catch (err) {
-      if (err.code === 'ENOENT') await execFileAsync('tar', ['-xf', file, '-C', dir], { timeout: 240000 });
-      else throw err;
+      if (err.code !== 'ENOENT') throw err;
+    }
+    try {
+      // Windows and macOS ship bsdtar, which reads zip files directly.
+      await execFileAsync('tar', ['-xf', file, '-C', dir], { timeout: 240000 });
+      return;
+    } catch {
+      // A GNU tar on PATH cannot read zip.
+    }
+    if (platform === 'win32') {
+      const quote = (value) => String(value).replace(/'/g, "''");
+      await execFileAsync('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -LiteralPath '${quote(file)}' -DestinationPath '${quote(dir)}' -Force`,
+      ], { timeout: 240000 });
+      return;
+    }
+    // Some minimal Linux images have neither unzip nor bsdtar but do ship Python.
+    try {
+      await execFileAsync('python3', ['-m', 'zipfile', '-e', file, dir], { timeout: 240000 });
+    } catch (err) {
+      if (err.code === 'ENOENT') throw new Error('unzip, bsdtar or python3 is needed to unpack the zip archive');
+      throw err;
     }
     return;
   }

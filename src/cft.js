@@ -13,7 +13,8 @@ const byVersionDesc = (a, b) => b.localeCompare(a, undefined, { numeric: true })
 function platformKey(platform, arch) {
   if (platform === 'win32') return 'win64';
   if (platform === 'darwin') return arch === 'arm64' ? 'mac-arm64' : 'mac-x64';
-  return 'linux64';
+  // Google publishes no Linux arm64 build for Chrome for Testing.
+  return arch === 'arm64' ? null : 'linux64';
 }
 
 async function fetchVersions(fetchImpl = fetch) {
@@ -53,6 +54,7 @@ function createCftManager({
   const key = platformKey(platform, arch);
 
   function load() {
+    if (!key) return Promise.resolve([]);
     if (!versions) {
       versions = (async () => parseVersions(await fetchVersionsImpl(), key))();
       versions.catch(() => { versions = null; });
@@ -112,6 +114,7 @@ function createCftManager({
   }
 
   async function ensureBrowser(major) {
+    if (!key) throw new Error('Chrome for Testing has no Linux arm64 build');
     if (!MAJOR_RE.test(String(major))) throw new Error(`invalid Chromium version: ${major}`);
     const cached = installedForMajor(major);
     if (cached) return cached;

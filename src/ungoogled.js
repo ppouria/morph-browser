@@ -10,7 +10,7 @@ const CANDIDATES = {
   linux: (arch) => (arch === 'arm64'
     ? [{ re: /arm64_linux\.tar\.xz$/i, kind: 'tarxz' }]
     : [{ re: /x86_64_linux\.tar\.xz$/i, kind: 'tarxz' }]),
-  win32: () => [{ re: /_windows_x64\.zip$/i, kind: 'zip' }],
+  win32: (arch) => [{ re: new RegExp(`_windows_${arch === 'arm64' ? 'arm64' : 'x64'}\\.zip$`, 'i'), kind: 'zip' }],
   darwin: (arch) => [{ re: new RegExp(`_${arch === 'arm64' ? 'arm64' : 'x86_64'}-macos\\.dmg$`, 'i'), kind: 'dmg' }],
 };
 

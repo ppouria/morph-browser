@@ -23,6 +23,7 @@ function createChromiumManager({
   download = downloadFile,
   extract = extractArchive,
 }) {
+  const supported = !(platform === 'linux' && arch === 'arm64');
   const bucket = (BUCKETS[platform] || BUCKETS.linux)[arch === 'arm64' ? 'arm64' : 'x64'];
   const archive = ARCHIVE[platform] || ARCHIVE.linux;
   const inflight = new Map();
@@ -45,6 +46,7 @@ function createChromiumManager({
   }
 
   async function ensureBrowser(version = 'latest') {
+    if (!supported) throw new Error('Chromium snapshots are not published for Linux arm64');
     if (version !== 'latest') throw new Error('The Chromium snapshot kernel only ships the latest build');
     const cached = installed();
     if (cached) return cached;
@@ -82,7 +84,7 @@ function createChromiumManager({
   }
 
   async function listVersions() {
-    return ['latest'];
+    return supported ? ['latest'] : [];
   }
 
   function listInstalled() {

@@ -16,6 +16,18 @@ function macCandidates() {
   ];
 }
 
+// The settings file picker can select a .app bundle; the binary inside it is what spawn needs.
+const MAC_APP_BINARIES = ['Google Chrome', 'Chromium', 'Google Chrome for Testing', 'Brave Browser', 'Thorium'];
+function resolveMacBundle(appPath) {
+  if (!String(appPath).endsWith('.app')) return null;
+  const macos = path.join(appPath, 'Contents', 'MacOS');
+  for (const name of MAC_APP_BINARIES) {
+    const full = path.join(macos, name);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
 function winCandidates(env) {
   const roots = [env.PROGRAMFILES, env['PROGRAMFILES(X86)'], env.LOCALAPPDATA].filter(Boolean);
   return roots.map((root) => path.win32.join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'));
@@ -29,7 +41,10 @@ function findChromium({
   env = process.env,
   exists = fs.existsSync,
 } = {}) {
-  if (configuredPath && exists(configuredPath)) return configuredPath;
+  if (configuredPath && exists(configuredPath)) {
+    if (platform === 'darwin') return resolveMacBundle(configuredPath) || configuredPath;
+    return configuredPath;
+  }
 
   const vendorPointer = vendorDir && path.join(vendorDir, 'executable.txt');
   if (vendorPointer && exists(vendorPointer)) {
@@ -145,4 +160,4 @@ function stop(child, platform = process.platform) {
   }
 }
 
-module.exports = { findChromium, detectBrowserMajor, buildArgs, launch, stop };
+module.exports = { findChromium, detectBrowserMajor, buildArgs, launch, stop, resolveMacBundle };

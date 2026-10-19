@@ -43,7 +43,13 @@ async function latestRelease() {
 
 // Wraps electron-updater for packaged builds and falls back to the GitHub API in development,
 // where an update can be reported but not installed.
-function createUpdater({ getSettings, onChange, isPackaged = false, currentVersion = '0.0.0' }) {
+function createUpdater({
+  getSettings,
+  onChange,
+  isPackaged = false,
+  currentVersion = '0.0.0',
+  supported = true,
+}) {
   const current = currentVersion;
   let state = {
     status: 'idle',
@@ -55,6 +61,7 @@ function createUpdater({ getSettings, onChange, isPackaged = false, currentVersi
     detail: '',
     canInstall: false,
     dev: !isPackaged,
+    supported,
   };
   let autoUpdater = null;
 
@@ -95,6 +102,15 @@ function createUpdater({ getSettings, onChange, isPackaged = false, currentVersi
   }
 
   async function check() {
+    if (!supported) {
+      set({
+        status: 'not-available',
+        version: null,
+        error: null,
+        detail: 'Auto-update is available in the AppImage, installer and dmg builds.',
+      });
+      return;
+    }
     set({ status: 'checking', error: null, progress: 0 });
     if (isPackaged) {
       if (!autoUpdater) set({ status: 'error', error: 'updater is not ready' });
@@ -129,6 +145,7 @@ function createUpdater({ getSettings, onChange, isPackaged = false, currentVersi
   }
 
   async function download() {
+    if (!supported) throw new Error('This build cannot update itself');
     if (!isPackaged) throw new Error('Updates can only be installed from the packaged app');
     if (!autoUpdater) throw new Error('updater is not ready');
     autoUpdater.autoDownload = false;
@@ -136,6 +153,7 @@ function createUpdater({ getSettings, onChange, isPackaged = false, currentVersi
   }
 
   function install() {
+    if (!supported) throw new Error('This build cannot update itself');
     if (!isPackaged) throw new Error('Updates can only be installed from the packaged app');
     if (!autoUpdater) throw new Error('updater is not ready');
     autoUpdater.quitAndInstall();

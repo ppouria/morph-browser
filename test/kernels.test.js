@@ -179,3 +179,39 @@ test('installed-binary kernels report what is present', async () => {
   assert.ok(Array.isArray(versions));
   if (!versions.length) await assert.rejects(manager.ensureBrowser(), /No thorium installation/);
 });
+
+test('linux arm64 kernels report no downloadable build', async () => {
+  assert.equal(platformKey('linux', 'arm64'), null);
+
+  const cft = createCftManager({
+    cacheDir: tmp(),
+    platform: 'linux',
+    arch: 'arm64',
+    fetchVersionsImpl: async () => ({ versions: [] }),
+    download: async () => {},
+    extract: async () => {},
+  });
+  assert.deepEqual(await cft.listVersions(), []);
+  await assert.rejects(cft.ensureBrowser('150'), /no Linux arm64/);
+
+  const snapshots = createChromiumManager({ cacheDir: tmp(), platform: 'linux', arch: 'arm64' });
+  assert.deepEqual(await snapshots.listVersions(), []);
+  await assert.rejects(snapshots.ensureBrowser('latest'), /not published for Linux arm64/);
+});
+
+test('firefox uses the arm64 linux archive and skips downloads on windows', async () => {
+  assert.match(downloadUrl('158.0', 'linux', 'arm64'), /linux-aarch64\/en-US\/firefox-158\.0\.tar\.xz$/);
+
+  const manager = createFirefoxManager({
+    cacheDir: tmp(),
+    platform: 'win32',
+    fetchVersionsImpl: async () => ['158.0'],
+  });
+  assert.deepEqual(await manager.listVersions(), []);
+  await assert.rejects(manager.ensureBrowser('158.0'), /not offered on Windows/);
+});
+
+test('ungoogled chromium picks the windows arm64 asset', () => {
+  const assets = CANDIDATES.win32('arm64');
+  assert.ok(assets.some((asset) => asset.re.test('ungoogled-chromium_140.0.7339.80-1.1_windows_arm64.zip')));
+});

@@ -19,6 +19,9 @@ on the local machine: there is no account, no cloud sync and no team service.
 
 - Supported kernels: Google Chrome, Chrome for Testing, Chromium snapshot, ungoogled-chromium,
   Fingerprint Chromium, Brave, Thorium and Firefox.
+- Google publishes Chrome builds for Linux only, so macOS and Windows use the installed Chrome.
+  Firefox has no Windows archive, so an installed Firefox or a custom binary is used there.
+- Linux arm64 has no Chrome for Testing or Chromium snapshot build; the other kernels are used.
 - A missing build is downloaded when a profile using it starts. The sidebar shows the progress and
   the finished task.
 - Installed builds can be inspected in Settings: size, open folder, remove one build or remove all
@@ -34,7 +37,9 @@ on the local machine: there is no account, no cloud sync and no team service.
 - Optional noise for canvas, WebGL images, audio, media devices, client rects and speech voices.
 - Fingerprint Chromium applies the fingerprint inside the browser (native), which is stronger than
   the DevTools-based spoofing used for the other Chromium kernels.
-- Firefox supports user-agent, language, timezone and WebRTC, but not canvas, WebGL or font spoofing.
+- Firefox supports user-agent, language and WebRTC, but not canvas, WebGL or font spoofing. Its
+  timezone is set with the POSIX `TZ` variable, so it is honoured on Linux and macOS; Windows
+  Firefox may keep the system timezone.
 
 ## Proxies
 
@@ -68,7 +73,10 @@ on the local machine: there is no account, no cloud sync and no team service.
 - On launch the app checks the latest stable release on GitHub, downloads it when allowed, and offers
   "Restart to update".
 - Windows uses the NSIS installer and updates in place without touching profile data.
-- Linux auto-update works for the AppImage. macOS auto-update requires a signed build.
+- Linux auto-update works for the AppImage, and Windows auto-update for the installer; the .deb
+  and the portable build cannot update themselves.
+- macOS auto-update requires a signed build. The CI builds are unsigned, so the first launch may
+  need "Open Anyway" in System Settings.
 
 ## Run from source
 

@@ -1,10 +1,12 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
+const { extractArchive } = require('./archive');
 const HISTORY_URL = 'https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/stable/versions?pageSize=500';
 const MAJOR_RE = /^\d{2,3}$/;
 const VERSION_DIR_RE = /^\d+\.\d+\.\d+\.\d+$/;
@@ -71,9 +73,30 @@ async function downloadTo(version, dest, onProgress) {
 async function unpackDeb(debPath, dir) {
   try {
     await execFileAsync('dpkg-deb', ['-x', debPath, dir]);
+    return;
   } catch (err) {
-    if (err.code === 'ENOENT') throw new Error('dpkg-deb is needed to unpack Chrome on Linux');
-    throw err;
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  // Fedora, Arch and others have no dpkg-deb; a .deb is an ar archive with a tar payload.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-deb-'));
+  try {
+    try {
+      await execFileAsync('ar', ['x', debPath], { cwd: tmp });
+    } catch (err) {
+      if (err.code === 'ENOENT') throw new Error('dpkg-deb or ar is needed to unpack Chrome on Linux');
+      throw err;
+    }
+    const data = fs.readdirSync(tmp).find((name) => name.startsWith('data.tar.'));
+    if (!data) throw new Error('the Chrome package has no data archive');
+    const kind = data.endsWith('.xz') ? 'tarxz'
+      : data.endsWith('.gz') ? 'targz'
+        : data.endsWith('.zst') ? 'tarzst'
+          : null;
+    if (!kind) throw new Error(`unsupported Chrome package compression: ${data}`);
+    await extractArchive(path.join(tmp, data), kind, dir, 'linux');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 

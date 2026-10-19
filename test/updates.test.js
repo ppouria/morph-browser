@@ -86,3 +86,17 @@ test('linux autostart writes and removes the desktop entry', (t) => {
   applyAutoStart({ enabled: false, app, isPackaged: true });
   assert.equal(fs.existsSync(file), false);
 });
+
+test('builds without self-update report it instead of failing', async () => {
+  const states = [];
+  const updater = createUpdater({
+    getSettings: () => ({ updates: {} }),
+    onChange: (state) => states.push(state),
+    currentVersion: '0.2.0',
+    supported: false,
+  });
+  await updater.check();
+  const last = states[states.length - 1];
+  assert.equal(last.status, 'not-available');
+  assert.match(last.detail, /AppImage, installer and dmg/);
+});

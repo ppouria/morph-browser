@@ -14,7 +14,8 @@ function createFingerprintManager(options) {
     ...options,
     repoFor: () => REPO,
     tagPattern: /^(\d+\.\d+\.\d+\.\d+)/,
-    candidates: (platform) => CANDIDATES[platform] || [],
+    // The project does not publish a Linux arm64 build; x64 under emulation is not a valid fallback.
+    candidates: (platform, arch) => (platform === 'linux' && arch === 'arm64' ? [] : CANDIDATES[platform] || []),
   });
 }
 

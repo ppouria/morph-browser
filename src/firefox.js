@@ -9,10 +9,11 @@ const VERSION_RE = /^\d+\.\d+(\.\d+)?(esr)?$/;
 
 const EXT = { linux: 'tar.xz', win32: 'zip', darwin: 'dmg' };
 
-function downloadUrl(version, platform) {
+function downloadUrl(version, platform, arch = 'x64') {
   if (platform === 'win32') throw new Error('Firefox downloads are not offered on Windows; install Firefox and set a custom binary.');
   if (platform === 'darwin') return `${BASE}/${version}/mac/en-US/Firefox%20${version}.dmg`;
-  return `${BASE}/${version}/linux-x86_64/en-US/firefox-${version}.tar.xz`;
+  const folder = arch === 'arm64' ? 'linux-aarch64' : 'linux-x86_64';
+  return `${BASE}/${version}/${folder}/en-US/firefox-${version}.tar.xz`;
 }
 
 async function fetchVersions(fetchImpl = fetch) {
@@ -34,6 +35,7 @@ async function fetchVersions(fetchImpl = fetch) {
 function createFirefoxManager({
   cacheDir,
   platform = process.platform,
+  arch = process.arch,
   onProgress = () => {},
   fetchVersionsImpl = fetchVersions,
   download = downloadFile,
@@ -58,6 +60,8 @@ function createFirefoxManager({
   }
 
   async function listVersions() {
+    // Mozilla publishes no Windows archive, so an installed Firefox or a custom binary is used.
+    if (platform === 'win32') return [];
     return (await load()).slice();
   }
 
@@ -67,7 +71,7 @@ function createFirefoxManager({
     fs.mkdirSync(cacheDir, { recursive: true });
 
     if (!fs.existsSync(downloadPath)) {
-      await download(downloadUrl(version, platform), downloadPath, {
+      await download(downloadUrl(version, platform, arch), downloadPath, {
         onProgress: (downloaded, total) => onProgress({ version, downloaded, total }),
       });
     }
@@ -88,6 +92,7 @@ function createFirefoxManager({
   }
 
   async function ensureBrowser(version) {
+    if (platform === 'win32') throw new Error('Firefox downloads are not offered on Windows; install Firefox or set a custom binary.');
     if (!VERSION_RE.test(String(version))) throw new Error(`invalid Firefox version: ${version}`);
     const cached = existingBuild(version);
     if (cached) return cached;

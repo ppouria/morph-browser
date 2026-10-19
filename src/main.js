@@ -10,7 +10,7 @@ dns.setDefaultResultOrder('ipv4first');
 const { spawn, execFile } = require('node:child_process');
 const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
-const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
+const { findChromium, detectBrowserMajor, launch, stop, resolveMacBundle } = require('./chromium');
 const { startRelay, checkProxy, probeProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
 const { parseProxyString } = require('./proxy-parse');
 const { createKernelRegistry } = require('./kernels');
@@ -19,6 +19,7 @@ const { prepareBrowser } = require('./cdp');
 const { startCheckServer } = require('./check-server');
 const { createUpdater } = require('./updates');
 const { applyAutoStart } = require('./autostart');
+const { detectExecutable } = require('./system-kernel');
 const { writePrefs: writeFirefoxPrefs, buildArgs: buildFirefoxArgs, firefoxUserAgent } = require('./firefox');
 const { setCookies: setBidiCookies } = require('./bidi');
 
@@ -341,6 +342,16 @@ function snapshotTabs(id, entry) {
   }).catch(() => {});
 }
 
+function detectFirefoxVersion(executable) {
+  return new Promise((resolve) => {
+    execFile(executable, ['--version'], { timeout: 5000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      const match = /Firefox\/(\d+)/i.exec(String(stdout || '')) || /Firefox (\d+)/i.exec(String(stdout || ''));
+      resolve(match ? `${match[1]}.0` : null);
+    });
+  });
+}
+
 function notifyNotice(text, level = 'warning') {
   if (win && !win.isDestroyed()) win.webContents.send('profiles:notice', { text, level });
 }
@@ -368,11 +379,11 @@ async function chooseProxy(profile) {
 
 // Firefox has no DevTools protocol: cookies go through WebDriver BiDi and everything else is a
 // profile preference. The process is treated like Chromium once it is running.
-async function launchFirefoxProfile(id, profile, executable, proxy) {
+async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = null) {
   const kernel = 'firefox';
   const geo = profile.fingerprint && needsGeo(profile) && proxy ? await lookupGeo(proxy) : null;
   const versions = await kernels.listVersions('firefox').catch(() => []);
-  const version = profile.browserVersion || versions[0] || '128.0';
+  const version = uaVersion || profile.browserVersion || versions[0] || '128.0';
   const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo });
   const relay = proxy ? await startRelay(proxy) : null;
 
@@ -453,27 +464,53 @@ async function launchProfile(id) {
     // use. A custom binary always wins, which is how forks without a download API are used.
     const kernel = profile.kernel || 'chrome';
     const native = kernel === 'fingerprint';
-    const customPath = profile.executablePath;
+    // A macOS file picker returns the .app bundle; the binary inside it is what spawn needs.
+    const customPath = profile.executablePath && process.platform === 'darwin'
+      ? (resolveMacBundle(profile.executablePath) || profile.executablePath)
+      : profile.executablePath;
     if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
     if (kernel === 'firefox') {
       const chosen = await chooseProxy(profile);
       if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
-      const firefoxVersion = profile.browserVersion || (await kernels.listVersions('firefox'))[0];
-      await launchFirefoxProfile(
-        id,
-        profile,
-        customPath || await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion)),
-        chosen.proxy,
-      );
+      const versions = await kernels.listVersions('firefox').catch(() => []);
+      const firefoxVersion = profile.browserVersion || versions[0];
+      let firefoxExecutable = customPath;
+      // Mozilla ships no Windows archive, so an installed Firefox is used when it exists.
+      if (!firefoxExecutable && process.platform === 'win32') {
+        firefoxExecutable = detectExecutable('firefox', 'win32');
+      }
+      if (!firefoxExecutable) {
+        if (!firefoxVersion) throw new Error('Firefox is not installed. Install Firefox or set a custom binary for this profile.');
+        firefoxExecutable = await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion));
+      }
+      const firefoxUaVersion = firefoxVersion || await detectFirefoxVersion(firefoxExecutable);
+      await launchFirefoxProfile(id, profile, firefoxExecutable, chosen.proxy, firefoxUaVersion);
       return;
     }
     if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
-    const executable = customPath
-      || (profile.browserVersion
-        ? await trackDownload(kernel, profile.browserVersion, () => kernels.ensureBrowser(kernel, profile.browserVersion))
-        : kernel === 'chrome'
-          ? findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR })
-          : await trackDownload(kernel, 'latest', () => kernels.ensureBrowser(kernel, 'latest')));
+    let executable = customPath;
+    if (!executable) {
+      if (kernel === 'chrome' && process.platform !== 'linux') {
+        // Google publishes Chrome builds for Linux only; other systems use the installed app.
+        executable = findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR });
+      } else if (kernel === 'chrome') {
+        executable = profile.browserVersion
+          ? await trackDownload('chrome', profile.browserVersion, () => kernels.ensureBrowser('chrome', profile.browserVersion))
+          : findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR });
+      } else if (kernel === 'brave' && process.platform === 'win32') {
+        // Brave publishes no Windows zip, so only an installed copy works.
+        executable = detectExecutable('brave', 'win32');
+        if (!executable) throw new Error('Brave downloads are not available on Windows. Install Brave or set a custom binary for this profile.');
+      } else {
+        let wanted = profile.browserVersion;
+        if (!wanted) {
+          const versions = await kernels.listVersions(kernel).catch(() => []);
+          wanted = versions[0];
+        }
+        if (!wanted) throw new Error(`no ${kernel} build is available for this platform`);
+        executable = await trackDownload(kernel, wanted, () => kernels.ensureBrowser(kernel, wanted));
+      }
+    }
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
     const chosen = await chooseProxy(profile);
@@ -482,9 +519,18 @@ async function launchProfile(id) {
     // "Based on IP" needs the exit IP's timezone and country; a failed lookup falls back to the
     // real system values instead of blocking the launch.
     const geo = needsGeo(profile) && chosen.proxy ? await lookupGeo(chosen.proxy) : null;
+
+    // A Chrome install on macOS/Windows is not a downloaded build, so the stored version can be
+    // stale or absent; the binary's real major is the only safe one there.
+    const detectedMajor = await detectBrowserMajor(executable);
+    const useStoredVersion = Boolean(profile.browserVersion)
+      && profile.browserVersion !== 'latest'
+      && !(kernel === 'chrome' && process.platform !== 'linux');
+    const effectiveVersion = useStoredVersion ? profile.browserVersion : detectedMajor;
+
     const resolved = resolveFingerprint(profile.fingerprint, {
       os: profile.os,
-      major: profile.browserVersion,
+      major: effectiveVersion,
       geo,
     });
     const seed = seedFor(profile);
@@ -493,8 +539,7 @@ async function launchProfile(id) {
     // An automatic UA only overrides the browser when the profile asks for another OS. The patched
     // kernel sets its own brand and platform, so it only needs the override for a custom UA.
     const hostOs = process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
-    const detectedMajor = await detectBrowserMajor(executable);
-    const major = profile.browserVersion && profile.browserVersion !== 'latest' ? profile.browserVersion : detectedMajor;
+    const major = effectiveVersion;
     // Brave and Thorium report their own version, not the Chromium version the user-agent needs.
     const uaMajor = ['brave', 'thorium'].includes(kernel) ? detectedMajor || major : major;
     const customUserAgent = profile.userAgent.mode === 'custom';
@@ -828,7 +873,7 @@ function setupIpc() {
     const installed = new Set(installedList);
     for (const version of installedList) installed.add(version.split('.')[0]);
     const majors = kernel === 'chrome'
-      ? MAJOR_OPTIONS
+      ? (process.platform === 'linux' && process.arch === 'x64' ? MAJOR_OPTIONS : [])
       : await kernels.listVersions(kernel).catch(() => []);
     return majors.map((major) => ({ major, installed: installed.has(major) }));
   });
@@ -944,9 +989,11 @@ function folderSize(dir) {
   const remember = (size) => { sizeCache.set(dir, { size, at: Date.now() }); return size; };
   if (process.platform !== 'win32') {
     return new Promise((resolve) => {
-      execFile('du', ['-sb', dir], { timeout: 20000 }, (err, stdout) => {
-        const size = err ? 0 : Number(String(stdout).split('\t')[0]) || 0;
-        resolve(remember(size));
+      // GNU du has -b; BSD du (macOS) only has -k, so the result is converted to bytes.
+      const args = process.platform === 'darwin' ? ['-sk', dir] : ['-sb', dir];
+      execFile('du', args, { timeout: 20000 }, (err, stdout) => {
+        const value = err ? 0 : Number(String(stdout).split('\t')[0]) || 0;
+        resolve(remember(process.platform === 'darwin' ? value * 1024 : value));
       });
     });
   }
@@ -996,6 +1043,7 @@ function createWindow() {
     minWidth: 760,
     minHeight: 540,
     title: 'Morph Browser',
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     backgroundColor: '#0d0f14',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -1040,9 +1088,18 @@ if (!app.requestSingleInstanceLock()) {
       return null;
     });
     browserCache = path.join(app.getPath('userData'), 'browsers');
+    // A .deb install and the Windows portable build cannot update themselves.
+    const updatesSupported = !app.isPackaged
+      ? true
+      : process.platform === 'linux'
+        ? Boolean(process.env.APPIMAGE)
+        : process.platform === 'win32'
+          ? !process.env.PORTABLE_EXECUTABLE_DIR
+          : true;
     updater = createUpdater({
       getSettings: () => store.getSettings(),
       isPackaged: app.isPackaged,
+      supported: updatesSupported,
       currentVersion: app.getVersion(),
       onChange: (state) => {
         if (win && !win.isDestroyed()) win.webContents.send('updates:state', state);
