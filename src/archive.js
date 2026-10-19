@@ -6,9 +6,9 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 
 const BINARY_NAMES = {
-  linux: ['chrome', 'chromium'],
-  win32: ['chrome.exe', 'chromium.exe'],
-  darwin: ['Google Chrome for Testing', 'Chromium', 'chrome', 'chromium'],
+  linux: ['chrome', 'chromium', 'brave', 'brave-browser', 'thorium', 'thorium-browser', 'firefox'],
+  win32: ['chrome.exe', 'chromium.exe', 'brave.exe', 'thorium.exe', 'firefox.exe'],
+  darwin: ['Google Chrome for Testing', 'Chromium', 'Brave Browser', 'Thorium', 'firefox', 'chrome', 'chromium'],
 };
 
 function walk(dir, depth = 0) {
@@ -39,6 +39,10 @@ async function extractArchive(file, kind, dir, platform) {
 
   if (kind === 'tarxz') {
     await execFileAsync('tar', ['-xJf', file, '-C', dir], { timeout: 240000 });
+    return;
+  }
+  if (kind === 'tarbz2') {
+    await execFileAsync('tar', ['-xjf', file, '-C', dir], { timeout: 240000 });
     return;
   }
   if (kind === 'zip') {

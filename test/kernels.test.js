@@ -7,12 +7,15 @@ const { createKernelRegistry, KERNEL_INFO } = require('../src/kernels');
 const { createCftManager, parseVersions, platformKey } = require('../src/cft');
 const { createChromiumManager } = require('../src/chromium-snapshots');
 const { createUngoogledManager, CANDIDATES } = require('../src/ungoogled');
+const { createBraveManager } = require('../src/brave');
+const { createFirefoxManager, downloadUrl, writePrefs, buildArgs, firefoxUserAgent, VERSION_RE } = require('../src/firefox');
+const { createSystemManager } = require('../src/system-kernel');
 const { parseReleases } = require('../src/github-kernel');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pb-kernel-'));
 
 test('the registry exposes every kernel with a description', () => {
-  assert.deepEqual(KERNEL_INFO.map((kernel) => kernel.id), ['chrome', 'cft', 'chromium', 'ungoogled', 'fingerprint']);
+  assert.deepEqual(KERNEL_INFO.map((kernel) => kernel.id), ['chrome', 'cft', 'chromium', 'ungoogled', 'fingerprint', 'brave', 'thorium', 'firefox']);
   for (const kernel of KERNEL_INFO) assert.ok(kernel.label && kernel.description);
 });
 
@@ -85,4 +88,94 @@ test('the registry lists installed builds per kernel', async () => {
   assert.deepEqual(registry.listInstalled('fingerprint'), []);
   assert.deepEqual(registry.listInstalled('chromium'), []);
   assert.throws(() => registry.listInstalled('nope'), /unknown kernel/);
+});
+
+test('brave uses its semantic version and platform archive', () => {
+  const releases = [{
+    tag_name: 'v1.97.59',
+    draft: false,
+    prerelease: false,
+    assets: [
+      { name: 'brave-browser-1.97.59-linux-amd64.zip', browser_download_url: 'https://example.test/brave-linux.zip' },
+      { name: 'Brave-Browser-x64.dmg', browser_download_url: 'https://example.test/brave.dmg' },
+      { name: 'brave-browser-1.97.59-1.x86_64.rpm', browser_download_url: 'https://example.test/brave.rpm' },
+    ],
+  }];
+  const entries = parseReleases(releases, {
+    tagPattern: /^v(\d+\.\d+\.\d+)$/,
+    candidates: (platform, arch) => createBraveCandidates(platform, arch),
+    platform: 'linux',
+    arch: 'x64',
+  });
+  assert.equal(entries[0].version, '1.97.59');
+  assert.match(entries[0].asset.name, /linux-amd64\.zip$/);
+});
+
+function createBraveCandidates(platform, arch) {
+  const { CANDIDATES: BRAVE } = require('../src/brave');
+  return BRAVE[platform](arch);
+}
+
+test('firefox builds a download url per platform', () => {
+  assert.match(downloadUrl('158.0', 'linux'), /linux-x86_64\/en-US\/firefox-158\.0\.tar\.xz$/);
+  assert.match(downloadUrl('153.5.0esr', 'darwin'), /mac\/en-US\/Firefox%20153\.5\.0esr\.dmg$/);
+  assert.throws(() => downloadUrl('158.0', 'win32'), /not offered on Windows/);
+  assert.equal(VERSION_RE.test('153.5.0esr'), true);
+  assert.equal(VERSION_RE.test('nightly'), false);
+});
+
+test('firefox preferences carry the proxy, user agent and language', () => {
+  const dir = tmp();
+  writePrefs(dir, {
+    proxyServer: 'http://127.0.0.1:8899',
+    userAgent: 'Mozilla/5.0 Firefox/158.0',
+    languages: ['de-DE', 'de', 'en'],
+    webRtc: 'disabled',
+    blockGeolocation: true,
+    restorePages: false,
+  });
+  const prefs = fs.readFileSync(path.join(dir, 'user.js'), 'utf8');
+  assert.match(prefs, /network\.proxy\.type", 1/);
+  assert.match(prefs, /network\.proxy\.http", "127\.0\.0\.1"/);
+  assert.match(prefs, /network\.proxy\.http_port", 8899/);
+  assert.match(prefs, /general\.useragent\.override/);
+  assert.match(prefs, /intl\.accept_languages", "de-DE,de,en"/);
+  assert.match(prefs, /media\.peerconnection\.ice\.proxy_only", true/);
+  assert.match(prefs, /geo\.enabled", false/);
+  assert.match(prefs, /browser\.sessionstore\.resume_from_crash", false/);
+});
+
+test('firefox command line opens the start pages in the profile', () => {
+  const args = buildArgs({ profileDir: '/tmp/p', startUrls: ['https://example.com'], windowSize: { width: 1366, height: 768 } });
+  assert.deepEqual(args.slice(0, 3), ['-profile', '/tmp/p', '-no-remote']);
+  assert.deepEqual(args.slice(3, 7), ['-width', '1366', '-height', '768']);
+  assert.equal(args[7], 'https://example.com');
+  assert.match(firefoxUserAgent('windows', '158.0.1'), /Windows NT 10\.0.*Firefox\/158\.0/);
+});
+
+test('firefox downloads and unpacks a build once', async () => {
+  const cacheDir = tmp();
+  const manager = createFirefoxManager({
+    cacheDir,
+    platform: 'linux',
+    fetchVersionsImpl: async () => ['158.0.1', '153.5.0esr'],
+    download: async (url, dest) => fs.writeFileSync(dest, 'archive'),
+    extract: async (file, kind, dir) => {
+      assert.equal(kind, 'tarxz');
+      fs.mkdirSync(path.join(dir, 'firefox'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'firefox', 'firefox'), '');
+    },
+  });
+  assert.deepEqual(await manager.listVersions(), ['158.0.1', '153.5.0esr']);
+  const exe = await manager.ensureBrowser('158.0.1');
+  assert.match(exe, /158\.0\.1\/firefox\/firefox$/);
+  assert.deepEqual(manager.listInstalled(), ['158.0.1']);
+  await assert.rejects(manager.ensureBrowser('nightly'), /invalid Firefox version/);
+});
+
+test('installed-binary kernels report what is present', async () => {
+  const manager = createSystemManager({ kind: 'thorium', platform: 'linux' });
+  const versions = await manager.listVersions();
+  assert.ok(Array.isArray(versions));
+  if (!versions.length) await assert.rejects(manager.ensureBrowser(), /No thorium installation/);
 });

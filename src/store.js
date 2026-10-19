@@ -23,6 +23,7 @@ const MAX_TAGS = 12;
 const SAME_SITE = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None' };
 const DEFAULT_SETTINGS = { chromiumPath: null, theme: 'system', openCheckPage: true, apiToken: null };
 const TOTP_RE = /^[A-Z2-7]{16,64}$/;
+const VERSION_RE = /^[0-9][0-9A-Za-z._-]{0,30}$/;
 
 // Every profile carries a fingerprint block. The values decided here are applied at launch by
 // chromium.js (command line flags) and cdp.js (DevTools emulation and the injected script).
@@ -77,7 +78,7 @@ function normalizeBrowserVersion(version) {
   const text = String(version || '').trim();
   if (!text) return null;
   if (text === 'latest') return 'latest';
-  if (!MAJOR_RE.test(text)) throw new Error('Chromium version must be a major number, like 151');
+  if (!VERSION_RE.test(text)) throw new Error('invalid browser version');
   return text;
 }
 
@@ -278,6 +279,13 @@ function normalizePrefs(input) {
   return prefs;
 }
 
+function normalizeExecutablePath(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  if (text.length > 1000) throw new Error('the custom binary path is too long');
+  return text;
+}
+
 function normalizeLaunchArgs(value) {
   const text = String(value || '').trim();
   if (text.length > 2000) throw new Error('launch arguments are too long');
@@ -346,6 +354,7 @@ function createStore(dir) {
       kernel: pickEnum(input.kernel, KERNELS, 'chrome', 'kernel'),
       os: pickEnum(input.os, OS_LIST, 'windows', 'OS'),
       userAgent: normalizeUserAgent(input.userAgent),
+      executablePath: normalizeExecutablePath(input.executablePath),
       proxy: normalizeProxy(input.proxy),
       browserVersion: normalizeBrowserVersion(input.browserVersion),
       startUrls: normalizeStartUrls(input.startUrls),
@@ -540,6 +549,7 @@ module.exports = {
   normalizeTags,
   normalizeTotp,
   normalizePrefs,
+  normalizeExecutablePath,
   DEFAULT_FINGERPRINT,
   DEFAULT_SETTINGS,
   DEFAULT_PREFS,

@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import { DeleteOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import api from './api';
+import { versionLabel } from './format';
 
 const { Text, Paragraph } = Typography;
 
@@ -122,7 +123,7 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
                 ]}
               >
                 <Space>
-                  <Text code>{build.version === 'latest' ? 'Latest snapshot' : `Chrome ${build.version}`}</Text>
+                  <Text code>{versionLabel(build.kernel, build.version)}</Text>
                   <Text type="secondary" style={{ fontSize: 11 }}>{build.label || build.kernel}</Text>
                 </Space>
               </List.Item>

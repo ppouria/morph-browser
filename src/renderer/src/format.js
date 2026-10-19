@@ -19,8 +19,27 @@ export function proxyLabel(proxy) {
   return proxy ? `${proxy.host}:${proxy.port}` : 'Direct connection';
 }
 
+const KERNEL_PREFIX = {
+  chrome: 'Chrome',
+  cft: 'Chrome',
+  chromium: 'Chromium',
+  ungoogled: 'Chromium',
+  fingerprint: 'Chrome',
+  brave: 'Brave',
+  thorium: 'Thorium',
+  firefox: 'Firefox',
+};
+
+export function versionLabel(kernel, version) {
+  const prefix = KERNEL_PREFIX[kernel] || 'Chrome';
+  if (!version) return kernel === 'chrome' ? 'System Chrome' : 'Latest build';
+  if (version === 'latest') return `${prefix} latest`;
+  return `${prefix} ${version}`;
+}
+
 export function chromeLabel(profile) {
-  return profile.browserVersion ? `Chrome ${profile.browserVersion}` : 'System Chrome';
+  if (profile.browserVersion) return versionLabel(profile.kernel, profile.browserVersion);
+  return profile.kernel === 'chrome' || !profile.kernel ? 'System Chrome' : versionLabel(profile.kernel, 'latest');
 }
 
 export function groupOptions(profiles) {

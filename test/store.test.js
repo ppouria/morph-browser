@@ -53,11 +53,11 @@ test('rejects unknown proxy type and bad port', () => {
   assert.throws(() => normalizeProxy({ type: 'http', host: 'h', port: 'abc' }), /port/);
 });
 
-test('Chromium version is a major number or empty', () => {
+test('browser version is validated and trimmed', () => {
   assert.equal(normalizeBrowserVersion(''), null);
   assert.equal(normalizeBrowserVersion(' 151 '), '151');
-  assert.throws(() => normalizeBrowserVersion('151.0.7922.173'), /major number/);
-  assert.throws(() => normalizeBrowserVersion('../151'), /major number/);
+  assert.equal(normalizeBrowserVersion('151.0.7922.173'), '151.0.7922.173');
+  assert.throws(() => normalizeBrowserVersion('../151'), /invalid browser version/);
 });
 
 test('start URLs: one per line, http or https only, at most ten', () => {
@@ -233,10 +233,19 @@ test('the check-page toggle can be turned off', () => {
   assert.equal(store.getSettings().openCheckPage, false);
 });
 
-test('the snapshot kernel version is accepted alongside majors', () => {
+test('kernel versions accept majors, semver and the snapshot marker', () => {
   assert.equal(normalizeBrowserVersion('latest'), 'latest');
   assert.equal(normalizeBrowserVersion('151'), '151');
-  assert.throws(() => normalizeBrowserVersion('nightly'), /major number/);
+  assert.equal(normalizeBrowserVersion('1.97.59'), '1.97.59');
+  assert.equal(normalizeBrowserVersion('158.0.1'), '158.0.1');
+  assert.equal(normalizeBrowserVersion('153.5.0esr'), '153.5.0esr');
+  assert.throws(() => normalizeBrowserVersion('nightly'), /invalid browser version/);
+});
+
+test('a custom binary path is stored per profile', () => {
+  const store = createStore(tmpDir());
+  const p = store.saveProfile({ name: 'Custom', executablePath: '/usr/bin/brave-browser' });
+  assert.equal(store.getProfile(p.id).executablePath, '/usr/bin/brave-browser');
 });
 
 test('tags, preferences, 2FA and launch arguments are stored', () => {

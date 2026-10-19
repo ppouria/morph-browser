@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import './dialog.css';
 import api from './api';
 import { totpCode, secondsLeft } from './totp';
+import { versionLabel } from './format';
 import {
   CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, OS_OPTIONS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
@@ -196,7 +197,14 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
     if (!open) return;
     let cancelled = false;
     api.listMajors(draft.kernel)
-      .then((list) => { if (!cancelled) setBuilds(list); })
+      .then((list) => {
+        if (cancelled) return;
+        setBuilds(list);
+        // Kernels that download their own builds need a version; pick the newest one by default.
+        if (draft.kernel !== 'chrome' && !draft.browserVersion && list.length) {
+          patch({ browserVersion: list[0].major });
+        }
+      })
       .catch(() => { if (!cancelled) setBuilds([]); });
     return () => { cancelled = true; };
   }, [open, draft.kernel]);
@@ -218,14 +226,14 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
     { value: '', label: draft.kernel === 'chrome' ? 'System Chrome' : 'Choose a build' },
     ...builds.map(({ major, installed }) => ({
       value: major,
-      label: major === 'latest' ? 'Latest snapshot' : `Chrome ${major}`,
+      label: versionLabel(draft.kernel, major),
       note: installed ? 'installed' : '',
     })),
   ], [builds, draft.kernel]);
 
   const uaPresets = useMemo(() => [
     { value: '', label: 'Automatic (browser default)' },
-    ...builds.slice(0, 8).map(({ major }) => ({ value: major, label: `Chrome ${major} on ${OS_LABELS[draft.os]}` })),
+    ...builds.slice(0, 8).map(({ major }) => ({ value: major, label: `${versionLabel(draft.kernel, major)} on ${OS_LABELS[draft.os]}` })),
   ], [builds, draft.os]);
 
   const savedProxyOptions = proxies.map((proxy) => ({
@@ -330,6 +338,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
         startUrls: draft.startUrls,
         cookies,
         changeIpUrl: draft.changeIpUrl,
+        executablePath: draft.executablePath.trim(),
         launchArgs: draft.launchArgs,
         prefs: draft.prefs,
         totp: draft.totpSecret.trim() ? { secret: draft.totpSecret.trim() } : null,
@@ -349,7 +358,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
   const fp = draft.fingerprint;
   const overview = [
     ['Kernel', (kernels || []).find((kernel) => kernel.id === draft.kernel)?.label || draft.kernel],
-    ['Browser', draft.browserVersion ? `Chrome ${draft.browserVersion}` : 'System Chrome'],
+    ['Browser', versionLabel(draft.kernel, draft.browserVersion)],
     ['OS', OS_LABELS[draft.os]],
     ['User-Agent', draft.uaValue.trim() ? 'Custom' : 'Browser default'],
     ['WebRTC', WEBRTC_OPTIONS.find((option) => option.value === fp.webRtc).label],
@@ -389,7 +398,10 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               placeholder="shop, warmup, client-a"
             />
           </Field>
-          <Field label="Browser">
+          <Field
+            label="Browser"
+            hint={builds.length === 0 ? 'No builds are available for this kernel here; set a custom binary or install the browser.' : undefined}
+          >
             <PmSelect value={draft.browserVersion} options={versionOptions} onChange={(value) => patch({ browserVersion: value })} />
           </Field>
           <Field label="OS">
@@ -502,6 +514,14 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
 
   const fingerprint = (
     <>
+      {draft.kernel === 'firefox' && (
+        <div className="pm-section">
+          <div className="pm-note">
+            Firefox runs on Gecko. The user-agent, languages, timezone and WebRTC policy are spoofed,
+            but canvas, WebGL and fonts stay real. Imported cookies are written through WebDriver BiDi.
+          </div>
+        </div>
+      )}
       {draft.kernel === 'fingerprint' && (
         <div className="pm-section">
           <div className="pm-note">
@@ -690,6 +710,15 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               Save passwords
             </label>
           </div>
+        </Field>
+        <Field label="Custom binary" hint="Absolute path to a Chromium-family binary. Overrides the kernel download for this profile.">
+          <input
+            className="pm-input"
+            value={draft.executablePath}
+            onChange={(event) => patch({ executablePath: event.target.value })}
+            placeholder="/usr/bin/brave-browser"
+            spellCheck={false}
+          />
         </Field>
         <Field label="Launch arguments" hint="Extra Chromium flags, one group per line or space separated.">
           <textarea

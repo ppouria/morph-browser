@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 // Some networks advertise IPv6 but cannot route it, which makes downloads hang. Prefer IPv4 for
 // every lookup the process makes.
 dns.setDefaultResultOrder('ipv4first');
+const { spawn } = require('node:child_process');
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
@@ -16,6 +17,8 @@ const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
 const { prepareBrowser } = require('./cdp');
 const { startCheckServer } = require('./check-server');
+const { writePrefs: writeFirefoxPrefs, buildArgs: buildFirefoxArgs, firefoxUserAgent } = require('./firefox');
+const { setCookies: setBidiCookies } = require('./bidi');
 
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'chromium');
 const running = new Map(); // profile id -> { child, relay, cdp, debugPort, executable }
@@ -113,6 +116,79 @@ function splitLaunchArgs(text) {
   return args;
 }
 
+// Firefox has no DevTools protocol: cookies go through WebDriver BiDi and everything else is a
+// profile preference. The process is treated like Chromium once it is running.
+async function launchFirefoxProfile(id, profile, executable) {
+  const kernel = 'firefox';
+  const geo = profile.fingerprint && needsGeo(profile) && profile.proxy ? await lookupGeo(profile.proxy) : null;
+  const versions = await kernels.listVersions('firefox').catch(() => []);
+  const version = profile.browserVersion || versions[0] || '128.0';
+  const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo });
+  const relay = profile.proxy ? await startRelay(profile.proxy) : null;
+
+  try {
+    const dir = profileDir(id);
+    fs.mkdirSync(dir, { recursive: true });
+    const userAgent = profile.userAgent.mode === 'custom'
+      ? profile.userAgent.value
+      : firefoxUserAgent(profile.os, version);
+    const languages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean);
+
+    writeFirefoxPrefs(dir, {
+      proxyServer: relay ? relay.proxyServer : null,
+      userAgent,
+      languages,
+      webRtc: profile.fingerprint.webRtc,
+      blockGeolocation: profile.fingerprint.location.mode === 'block',
+      restorePages: profile.prefs.restorePages,
+    });
+
+    const startUrls = [];
+    if (store.getSettings().openCheckPage !== false && checkServer) startUrls.push(checkServer.url);
+    startUrls.push(...profile.startUrls);
+
+    const debugPort = await freePort();
+    const args = buildFirefoxArgs({
+      profileDir: dir,
+      startUrls,
+      windowSize: profile.fingerprint.screen.mode === 'custom' ? resolved.screen : null,
+    });
+    const child = spawn(executable, [...args, '--remote-debugging-port', String(debugPort)], {
+      env: {
+        ...process.env,
+        TZ: resolved.timezone || process.env.TZ,
+        MOZ_CRASHREPORTER_DISABLE: '1',
+        MOZ_DISABLE_AUTO_SAFE_MODE: '1',
+      },
+      stdio: 'ignore',
+    });
+
+    const entry = { child, relay, cdp: null, debugPort: null };
+    running.set(id, entry);
+    const finish = (err) => {
+      if (err) console.error(`profile ${id}:`, err.message);
+      if (running.get(id) !== entry) return;
+      running.delete(id);
+      if (relay) relay.close().catch((error) => console.error(error));
+      notify();
+    };
+    child.on('error', finish);
+    child.on('exit', () => finish());
+
+    // Cookie import is best effort: a blocked BiDi port must not keep the browser from opening.
+    if (profile.cookies && profile.cookies.length) {
+      setBidiCookies(debugPort, profile.cookies, { timeout: 25000 })
+        .catch((err) => console.error(`profile ${id}: cookies were not imported (${err.message})`));
+    }
+
+    store.markOpened(id);
+    notify();
+  } catch (err) {
+    if (relay) relay.close().catch(() => {});
+    throw err;
+  }
+}
+
 async function launchProfile(id) {
   if (running.has(id) || launching.has(id)) return;
   launching.add(id);
@@ -121,13 +197,24 @@ async function launchProfile(id) {
     const profile = store.getProfile(id);
     if (!profile) throw new Error('profile not found');
 
-    // A profile with a version set gets that build from the shared cache, downloading it on first use.
+    // A profile with a version set gets that build from the shared cache, downloading it on first
+    // use. A custom binary always wins, which is how forks without a download API are used.
     const kernel = profile.kernel || 'chrome';
     const native = kernel === 'fingerprint';
+    const customPath = profile.executablePath;
+    if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
+    if (kernel === 'firefox') {
+      if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
+      await launchFirefoxProfile(id, profile, customPath || await kernels.ensureBrowser('firefox', profile.browserVersion || (await kernels.listVersions('firefox'))[0]));
+      return;
+    }
     if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
-    const executable = profile.browserVersion
-      ? await kernels.ensureBrowser(kernel, profile.browserVersion)
-      : findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR });
+    const executable = customPath
+      || (profile.browserVersion
+        ? await kernels.ensureBrowser(kernel, profile.browserVersion)
+        : kernel === 'chrome'
+          ? findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR })
+          : await kernels.ensureBrowser(kernel, 'latest'));
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
     if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
@@ -148,6 +235,8 @@ async function launchProfile(id) {
     const hostOs = process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
     const detectedMajor = await detectBrowserMajor(executable);
     const major = profile.browserVersion && profile.browserVersion !== 'latest' ? profile.browserVersion : detectedMajor;
+    // Brave and Thorium report their own version, not the Chromium version the user-agent needs.
+    const uaMajor = ['brave', 'thorium'].includes(kernel) ? detectedMajor || major : major;
     const customUserAgent = profile.userAgent.mode === 'custom';
     const userAgent = customUserAgent
       ? profile.userAgent.value
@@ -155,7 +244,7 @@ async function launchProfile(id) {
         ? null
         : profile.os === hostOs
           ? null
-          : userAgentFor(profile.os, major);
+          : userAgentFor(profile.os, uaMajor);
     const acceptLanguages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean).join(',');
     const preferenceFlags = [];
     if (profile.prefs.blockImages) preferenceFlags.push('--blink-settings=imagesEnabled=false');
@@ -378,7 +467,9 @@ function setupIpc() {
 
   ipcMain.handle('kernels:list', () => kernels.listKernels());
   ipcMain.handle('browsers:majors', async (_e, kernel = 'chrome') => {
-    const installed = new Set(kernels.listInstalled(kernel).map((version) => version.split('.')[0]));
+    const installedList = kernels.listInstalled(kernel);
+    const installed = new Set(installedList);
+    for (const version of installedList) installed.add(version.split('.')[0]);
     const majors = kernel === 'chrome'
       ? MAJOR_OPTIONS
       : await kernels.listVersions(kernel).catch(() => []);

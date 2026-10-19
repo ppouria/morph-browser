@@ -3,7 +3,7 @@ const path = require('node:path');
 const { downloadFile } = require('./download');
 const { extractArchive, findExecutable } = require('./archive');
 
-const VERSION_RE = /^\d+\.\d+\.\d+\.\d+$/;
+const VERSION_RE = /^\d+(\.\d+){2,3}$/;
 const MAJOR_RE = /^\d{2,3}$/;
 const byVersionDesc = (a, b) => b.localeCompare(a, undefined, { numeric: true });
 
@@ -56,6 +56,8 @@ function createGithubKernel({
   platform = process.platform,
   arch = process.arch,
   onProgress = () => {},
+  listByVersion = false,
+  versionLimit = 25,
   fetchImpl = fetch,
   download = downloadFile,
   extract = extractArchive,
@@ -86,8 +88,9 @@ function createGithubKernel({
 
   function installedForMajor(major) {
     if (!fs.existsSync(cacheDir)) return null;
+    const wanted = String(major);
     const versions = fs.readdirSync(cacheDir)
-      .filter((name) => VERSION_RE.test(name) && name.split('.')[0] === String(major))
+      .filter((name) => VERSION_RE.test(name) && (name === wanted || name.split('.')[0] === wanted))
       .sort(byVersionDesc);
     for (const version of versions) {
       const exe = existingBuild(version);
@@ -125,17 +128,20 @@ function createGithubKernel({
 
   async function listVersions() {
     const entries = await releasesFor();
+    if (listByVersion) return entries.map((entry) => entry.version).slice(0, versionLimit);
     return [...new Set(entries.map((entry) => entry.version.split('.')[0]))]
       .sort((a, b) => Number(b) - Number(a));
   }
 
   async function ensureBrowser(major) {
-    if (!MAJOR_RE.test(String(major))) throw new Error(`invalid Chromium version: ${major}`);
-    const cached = installedForMajor(major);
+    const wanted = String(major);
+    if (!MAJOR_RE.test(wanted) && !VERSION_RE.test(wanted)) throw new Error(`invalid Chromium version: ${major}`);
+    const cached = installedForMajor(wanted);
     if (cached) return cached;
 
     const entries = await releasesFor();
-    const entry = entries.find((candidate) => candidate.version.split('.')[0] === String(major));
+    const entry = entries.find((candidate) => candidate.version === wanted)
+      || entries.find((candidate) => candidate.version.split('.')[0] === wanted);
     if (!entry) throw new Error(`no ${major} build is available for this platform`);
 
     if (!inflight.has(entry.version)) {
