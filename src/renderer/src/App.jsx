@@ -89,6 +89,11 @@ function Shell() {
     }
   }, [message, refresh]);
 
+  const applySettings = useCallback((next) => {
+    setSettings(next);
+    setThemeMode(next.theme || 'system');
+  }, []);
+
   const handleTheme = async (mode) => {
     setThemeMode(mode);
     try {
@@ -194,6 +199,7 @@ function Shell() {
                   profiles={profiles}
                   loading={loading}
                   majors={majors}
+                  density={settings ? settings.density : 'middle'}
                   onNew={() => openEditor(null)}
                   onEdit={openEditor}
                   onRefresh={refresh}
@@ -223,7 +229,7 @@ function Shell() {
                   kernels={kernels}
                   themeMode={themeMode}
                   onTheme={handleTheme}
-                  onSettings={setSettings}
+                  onSettings={applySettings}
                   notify={message}
                 />
               )}

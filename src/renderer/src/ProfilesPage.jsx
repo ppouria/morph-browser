@@ -27,7 +27,7 @@ function errorText(err) {
     .replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
 }
 
-export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefresh }) {
+export default function ProfilesPage({ profiles, loading, density = 'middle', onNew, onEdit, onRefresh }) {
   const { message } = AntApp.useApp();
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState();
@@ -127,7 +127,8 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
   const showProxy = viewport.width >= 1000;
   const showLast = viewport.width >= 1140;
   const showStatus = viewport.width >= 860;
-  const pageSize = Math.max(4, Math.floor((viewport.height - 380) / 55));
+  const rowHeight = density === 'small' ? 46 : 55;
+  const pageSize = Math.max(4, Math.floor((viewport.height - 380) / rowHeight));
 
   const columns = [
     {
@@ -284,7 +285,7 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       <Table
         className="profiles-table"
         rowKey="id"
-        size="middle"
+        size={density === 'small' ? 'small' : 'middle'}
         loading={loading}
         dataSource={rows}
         columns={columns.filter(Boolean)}

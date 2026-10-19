@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 // every lookup the process makes.
 dns.setDefaultResultOrder('ipv4first');
 const { spawn, execFile } = require('node:child_process');
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
 const { startRelay, checkProxy, lookupGeo } = require('./proxy');
@@ -658,6 +658,32 @@ function setupIpc() {
   });
   ipcMain.handle('browsers:versions', (_e, kernel = 'chrome') => kernels.listVersions(kernel));
   ipcMain.handle('browsers:installed', (_e, kernel = 'chrome') => kernels.listInstalled(kernel));
+  ipcMain.handle('browsers:stats', async () => {
+    const list = kernels.listKernels();
+    const groups = [];
+    for (const kernel of list) {
+      const builds = [];
+      for (const version of kernels.listInstalled(kernel.id)) {
+        const dir = path.join(browserCache, kernel.id, version);
+        builds.push({ version, dir, size: await folderSize(dir) });
+      }
+      groups.push({ ...kernel, builds });
+    }
+    return groups;
+  });
+
+  ipcMain.handle('browsers:remove-all', (_e, kernel = 'chrome') => {
+    const dirs = kernels.listInstalled(kernel).map((version) => path.join(browserCache, kernel, version));
+    for (const entry of running.values()) {
+      if (dirs.some((dir) => entry.executable.startsWith(dir + path.sep))) {
+        throw new Error('a running profile uses a build from this kernel');
+      }
+    }
+    for (const dir of dirs) sizeCache.delete(dir);
+    fs.rmSync(path.join(browserCache, kernel), { recursive: true, force: true });
+    notify();
+  });
+
   ipcMain.handle('browsers:remove', (_e, kernel = 'chrome', version) => {
     // A build a running profile is using stays on disk until that profile stops.
     const usedDir = path.join(browserCache, kernel, version) + path.sep;
@@ -680,6 +706,24 @@ function setupIpc() {
     return { ...settings, detected, dataDir: app.getPath('userData') };
   });
   ipcMain.handle('settings:set', (_e, patch) => store.setSettings(patch));
+  ipcMain.handle('settings:reset', () => {
+    const settings = store.resetSettings();
+    notify();
+    return settings;
+  });
+  ipcMain.handle('app:info', () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    platform: process.platform,
+  }));
+  ipcMain.handle('shell:open-path', (_e, target) => {
+    // Only paths inside the app's data directory may be opened from the renderer.
+    const resolved = path.resolve(String(target || ''));
+    const root = app.getPath('userData');
+    if (!resolved.startsWith(root + path.sep)) throw new Error('blocked path');
+    return shell.openPath(resolved);
+  });
+  ipcMain.handle('shell:open-data-dir', () => shell.openPath(app.getPath('userData')));
 
   ipcMain.handle('shell:open-external', (_e, url) => {
     // Only the project page can be opened, so a compromised page cannot launch arbitrary URLs.
@@ -689,12 +733,67 @@ function setupIpc() {
   });
 }
 
+const sizeCache = new Map();
+
+// Sizes are shown in Settings; du keeps this fast on Linux and macOS, and the fallback walks
+// directories on Windows.
+function folderSize(dir) {
+  const cached = sizeCache.get(dir);
+  if (cached && Date.now() - cached.at < 60000) return Promise.resolve(cached.size);
+  const remember = (size) => { sizeCache.set(dir, { size, at: Date.now() }); return size; };
+  if (process.platform !== 'win32') {
+    return new Promise((resolve) => {
+      execFile('du', ['-sb', dir], { timeout: 20000 }, (err, stdout) => {
+        const size = err ? 0 : Number(String(stdout).split('\t')[0]) || 0;
+        resolve(remember(size));
+      });
+    });
+  }
+  return (async () => {
+    let total = 0;
+    const stack = [dir];
+    while (stack.length) {
+      const current = stack.pop();
+      let entries;
+      try {
+        entries = await fs.promises.readdir(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        else {
+          try { total += (await fs.promises.stat(full)).size; } catch { /* skip */ }
+        }
+      }
+    }
+    return remember(total);
+  })();
+}
+
 function createWindow() {
+  const stored = store.getSettings();
+  const saved = stored.rememberWindow && stored.window ? stored.window : null;
+  let bounds = null;
+  if (saved) {
+    const display = screen.getDisplayMatching(saved);
+    const area = display.workArea;
+    const width = Math.min(Math.max(saved.width, 720), area.width);
+    const height = Math.min(Math.max(saved.height, 540), area.height);
+    bounds = {
+      width,
+      height,
+      x: Math.min(Math.max(saved.x, area.x), area.x + area.width - width),
+      y: Math.min(Math.max(saved.y, area.y), area.y + area.height - height),
+    };
+  }
   win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 960,
-    minHeight: 600,
+    width: bounds ? bounds.width : 1280,
+    height: bounds ? bounds.height : 820,
+    ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
+    minWidth: 760,
+    minHeight: 540,
     title: 'Morph Browser',
     backgroundColor: '#0d0f14',
     webPreferences: {
@@ -704,6 +803,14 @@ function createWindow() {
       sandbox: true,
     },
   });
+  if (saved && saved.maximized) win.maximize();
+
+  win.on('close', () => {
+    if (win.isDestroyed() || !store.getSettings().rememberWindow) return;
+    const normal = win.getNormalBounds();
+    store.setSettings({ window: { ...normal, maximized: win.isMaximized() } });
+  });
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 

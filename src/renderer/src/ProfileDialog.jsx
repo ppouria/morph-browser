@@ -190,7 +190,21 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
 
   useEffect(() => {
     if (!open) return;
-    setDraft(draftFromProfile(profile));
+    const base = draftFromProfile(profile);
+    // A new profile starts from the defaults chosen in Settings.
+    if (!profile && settings && settings.defaults) {
+      const defaults = settings.defaults;
+      base.kernel = defaults.kernel || base.kernel;
+      base.os = defaults.os || base.os;
+      base.fingerprint = {
+        ...base.fingerprint,
+        screen: { ...base.fingerprint.screen, mode: 'preset', preset: defaults.screen || base.fingerprint.screen.preset },
+        timezone: { ...base.fingerprint.timezone, mode: defaults.timezone === 'ip' ? 'ip' : 'real' },
+        language: { ...base.fingerprint.language, mode: defaults.language === 'ip' ? 'ip' : 'real' },
+        randomFingerprint: Boolean(defaults.randomFingerprint),
+      };
+    }
+    setDraft(base);
     setTab('general');
     setError('');
     setCheck(null);

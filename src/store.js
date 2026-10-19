@@ -21,7 +21,23 @@ const MAX_START_URLS = 10;
 const MAX_COOKIES = 500;
 const MAX_TAGS = 12;
 const SAME_SITE = { strict: 'Strict', lax: 'Lax', none: 'None', no_restriction: 'None' };
-const DEFAULT_SETTINGS = { chromiumPath: null, theme: 'system', openCheckPage: true, apiToken: null };
+const DEFAULT_SETTINGS = {
+  chromiumPath: null,
+  theme: 'system',
+  openCheckPage: true,
+  apiToken: null,
+  density: 'middle',
+  rememberWindow: true,
+  defaults: {
+    kernel: 'chrome',
+    os: 'windows',
+    screen: '1920x1080',
+    timezone: 'real',
+    language: 'real',
+    randomFingerprint: false,
+  },
+  window: null,
+};
 const TOTP_RE = /^[A-Z2-7]{16,64}$/;
 const VERSION_RE = /^[0-9][0-9A-Za-z._-]{0,30}$/;
 
@@ -551,6 +567,13 @@ function createStore(dir) {
       return load().settings;
     },
 
+    resetSettings() {
+      const data = load();
+      data.settings = { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_SETTINGS.defaults } };
+      save(data);
+      return data.settings;
+    },
+
     // Only the keys present in the patch change.
     setSettings(patch) {
       const data = load();
@@ -561,6 +584,40 @@ function createStore(dir) {
       }
       if ('openCheckPage' in patch) data.settings.openCheckPage = Boolean(patch.openCheckPage);
       if ('apiToken' in patch) data.settings.apiToken = patch.apiToken ? String(patch.apiToken) : null;
+      if ('density' in patch) {
+        if (!['small', 'middle'].includes(patch.density)) throw new Error('density must be small or middle');
+        data.settings.density = patch.density;
+      }
+      if ('rememberWindow' in patch) data.settings.rememberWindow = Boolean(patch.rememberWindow);
+      if ('window' in patch) {
+        const bounds = patch.window;
+        if (bounds === null) data.settings.window = null;
+        else {
+          const numbers = ['width', 'height', 'x', 'y'].map((key) => Number(bounds[key]));
+          if (numbers.some((value) => !Number.isFinite(value))) throw new Error('invalid window bounds');
+          data.settings.window = {
+            width: Math.round(numbers[0]),
+            height: Math.round(numbers[1]),
+            x: Math.round(numbers[2]),
+            y: Math.round(numbers[3]),
+            maximized: Boolean(bounds.maximized),
+          };
+        }
+      }
+      if ('defaults' in patch) {
+        const next = { ...data.settings.defaults };
+        const input = patch.defaults || {};
+        if ('kernel' in input) next.kernel = pickEnum(input.kernel, KERNELS, next.kernel, 'default kernel');
+        if ('os' in input) next.os = pickEnum(input.os, OS_LIST, next.os, 'default OS');
+        if ('screen' in input) {
+          if (!/^\d{3,4}x\d{3,4}$/.test(String(input.screen))) throw new Error('invalid default screen');
+          next.screen = String(input.screen);
+        }
+        if ('timezone' in input) next.timezone = pickEnum(input.timezone, ['real', 'ip'], next.timezone, 'default timezone');
+        if ('language' in input) next.language = pickEnum(input.language, ['real', 'ip'], next.language, 'default language');
+        if ('randomFingerprint' in input) next.randomFingerprint = Boolean(input.randomFingerprint);
+        data.settings.defaults = next;
+      }
       save(data);
       return data.settings;
     },

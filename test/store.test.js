@@ -123,13 +123,47 @@ test('a profile keeps its cookies and change-IP URL', () => {
 
 test('settings: chromium path and theme change independently', () => {
   const store = createStore(tmpDir());
-  assert.deepEqual(store.getSettings(), { chromiumPath: null, theme: 'system', openCheckPage: true, apiToken: null });
+  const initial = store.getSettings();
+  assert.equal(initial.chromiumPath, null);
+  assert.equal(initial.theme, 'system');
+  assert.equal(initial.openCheckPage, true);
+  assert.equal(initial.density, 'middle');
+  assert.equal(initial.rememberWindow, true);
 
   store.setSettings({ chromiumPath: '/usr/bin/chromium' });
   store.setSettings({ theme: 'dark' });
-  assert.deepEqual(store.getSettings(), { chromiumPath: '/usr/bin/chromium', theme: 'dark', openCheckPage: true, apiToken: null });
+  const changed = store.getSettings();
+  assert.equal(changed.chromiumPath, '/usr/bin/chromium');
+  assert.equal(changed.theme, 'dark');
+  assert.equal(changed.openCheckPage, true);
 
   assert.throws(() => store.setSettings({ theme: 'neon' }), /theme must be/);
+});
+
+test('settings: density, window bounds, defaults and reset', () => {
+  const store = createStore(tmpDir());
+  store.setSettings({ density: 'small' });
+  assert.equal(store.getSettings().density, 'small');
+  assert.throws(() => store.setSettings({ density: 'huge' }), /density/);
+
+  store.setSettings({ rememberWindow: false });
+  assert.equal(store.getSettings().rememberWindow, false);
+
+  store.setSettings({ window: { x: 10, y: 20, width: 1000, height: 700, maximized: true } });
+  assert.deepEqual(store.getSettings().window, { x: 10, y: 20, width: 1000, height: 700, maximized: true });
+  assert.throws(() => store.setSettings({ window: { x: 'a', y: 0, width: 1, height: 1 } }), /window bounds/);
+
+  store.setSettings({ defaults: { kernel: 'firefox', os: 'macos', screen: '1366x768', timezone: 'ip', language: 'ip', randomFingerprint: true } });
+  assert.deepEqual(store.getSettings().defaults, {
+    kernel: 'firefox', os: 'macos', screen: '1366x768', timezone: 'ip', language: 'ip', randomFingerprint: true,
+  });
+  assert.throws(() => store.setSettings({ defaults: { kernel: 'nope' } }), /default kernel/);
+
+  const reset = store.resetSettings();
+  assert.equal(reset.density, 'middle');
+  assert.equal(reset.rememberWindow, true);
+  assert.deepEqual(reset.window, null);
+  assert.equal(reset.defaults.kernel, 'chrome');
 });
 
 test('a new profile gets the default OS, user-agent and fingerprint', () => {
