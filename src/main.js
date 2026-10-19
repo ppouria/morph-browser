@@ -20,6 +20,44 @@ const { startCheckServer } = require('./check-server');
 const { writePrefs: writeFirefoxPrefs, buildArgs: buildFirefoxArgs, firefoxUserAgent } = require('./firefox');
 const { setCookies: setBidiCookies } = require('./bidi');
 
+// The app was called Browser Manager before the rename; profile data moves with it so existing
+// profiles keep working instead of starting from an empty store.
+const DATA_DIR_NAME = 'morph-browser';
+const LEGACY_DATA_DIR_NAME = 'browser-manager';
+
+function useDataDir() {
+  const appData = app.getPath('appData');
+  const target = path.join(appData, DATA_DIR_NAME);
+  const legacy = path.join(appData, LEGACY_DATA_DIR_NAME);
+  if (!fs.existsSync(target) && fs.existsSync(legacy)) {
+    try {
+      fs.renameSync(legacy, target);
+    } catch {
+      fs.cpSync(legacy, target, { recursive: true });
+      fs.rmSync(legacy, { recursive: true, force: true });
+    }
+  }
+  // Downloaded kernels store an absolute path to their binary; the rename moved those folders.
+  const browsers = path.join(target, 'browsers');
+  if (fs.existsSync(browsers)) {
+    for (const kernel of fs.readdirSync(browsers)) {
+      const kernelDir = path.join(browsers, kernel);
+      if (!fs.statSync(kernelDir).isDirectory()) continue;
+      for (const version of fs.readdirSync(kernelDir)) {
+        const pointer = path.join(kernelDir, version, 'executable.txt');
+        if (!fs.existsSync(pointer)) continue;
+        const exe = fs.readFileSync(pointer, 'utf8');
+        if (exe.includes(legacy)) fs.writeFileSync(pointer, exe.split(legacy).join(target));
+      }
+    }
+  }
+
+  app.setPath('userData', target);
+}
+
+app.setName('Morph Browser');
+useDataDir();
+
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'chromium');
 const running = new Map(); // profile id -> { child, relay, cdp, debugPort, executable }
 const launching = new Set(); // ids still starting up; a download can make this take minutes
@@ -422,7 +460,7 @@ function setupIpc() {
     const payload = store.exportProfiles(ids);
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export profiles',
-      defaultPath: `browser-manager-profiles-${new Date().toISOString().slice(0, 10)}.json`,
+      defaultPath: `morph-browser-profiles-${new Date().toISOString().slice(0, 10)}.json`,
       filters: [{ name: 'JSON', extensions: ['json'] }],
     });
     if (canceled || !filePath) return { canceled: true };
@@ -507,7 +545,7 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 600,
-    title: 'Browser Manager',
+    title: 'Morph Browser',
     backgroundColor: '#0d0f14',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

@@ -132,10 +132,10 @@ function Shell() {
               width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center',
               background: 'linear-gradient(135deg, #4f7cff, #7c3aed)', color: '#fff', fontSize: 15, fontWeight: 700,
             }}>
-              B
+              M
             </div>
             <div style={{ lineHeight: 1.25 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Browser Manager</div>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Morph Browser</div>
               <Text type="secondary" style={{ fontSize: 11 }}>Local workspace</Text>
             </div>
           </div>

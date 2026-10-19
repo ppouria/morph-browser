@@ -54,7 +54,7 @@ function canvasFingerprint() {
     context.fillStyle = '#f60';
     context.fillRect(0, 0, 220, 60);
     context.fillStyle = '#069';
-    context.fillText('Browser Manager check', 4, 8);
+    context.fillText('Morph Browser check', 4, 8);
     context.fillStyle = 'rgba(102, 204, 0, 0.7)';
     context.fillText('fingerprint', 8, 30);
     return hash(canvas.toDataURL());

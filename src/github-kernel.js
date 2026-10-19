@@ -36,7 +36,7 @@ async function fetchReleases(repo, fetchImpl = fetch) {
   let response;
   try {
     response = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=100`, {
-      headers: { 'User-Agent': 'browser-manager', Accept: 'application/vnd.github+json' },
+      headers: { 'User-Agent': 'morph-browser', Accept: 'application/vnd.github+json' },
     });
   } catch {
     throw new Error('Could not reach the GitHub release list. Check the network or proxy.');

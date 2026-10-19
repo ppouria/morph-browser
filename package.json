@@ -1,7 +1,7 @@
 {
-  "name": "browser-manager",
+  "name": "morph-browser",
   "version": "0.2.0",
-  "description": "Run isolated Chromium profiles, each with its own data, proxy and fingerprint",
+  "description": "Morph Browser \u2014 run isolated browser profiles with their own data, proxy and fingerprint",
   "private": true,
   "main": "src/main.js",
   "scripts": {
@@ -12,8 +12,8 @@
     "build:renderer": "node scripts/build-renderer.mjs"
   },
   "build": {
-    "appId": "dev.browsermanager.app",
-    "productName": "Browser Manager",
+    "appId": "dev.morphbrowser.app",
+    "productName": "Morph Browser",
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "files": [
       "src/**/*",
@@ -87,5 +87,5 @@
     "name": "ppouria",
     "email": "ppouria@users.noreply.github.com"
   },
-  "desktopName": "browser-manager.desktop"
+  "desktopName": "morph-browser.desktop"
 }
