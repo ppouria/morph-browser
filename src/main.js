@@ -17,6 +17,8 @@ const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
 const { prepareBrowser } = require('./cdp');
 const { startCheckServer } = require('./check-server');
+const { createUpdater } = require('./updates');
+const { applyAutoStart } = require('./autostart');
 const { writePrefs: writeFirefoxPrefs, buildArgs: buildFirefoxArgs, firefoxUserAgent } = require('./firefox');
 const { setCookies: setBidiCookies } = require('./bidi');
 
@@ -99,6 +101,72 @@ let kernels;
 let browserCache;
 let win;
 let checkServer = null;
+let updater = null;
+
+// Downloads happen while a profile launches, but the UI needs to show them separately. Each entry
+// is a browser build being fetched, keyed by kernel and requested version.
+const downloads = new Map();
+
+function downloadList() {
+  return [...downloads.values()].map((task) => ({ ...task })).sort((a, b) => b.startedAt - a.startedAt);
+}
+
+function broadcastDownloads() {
+  if (win && !win.isDestroyed()) win.webContents.send('browsers:progress', downloadList());
+}
+
+function installedBuild(kernel, version) {
+  const installed = kernels.listInstalled(kernel);
+  return installed.some((entry) => entry === version || entry.split('.')[0] === version);
+}
+
+function findTask(kernel, version) {
+  for (const task of downloads.values()) {
+    if (task.kernel !== kernel || task.status !== 'downloading') continue;
+    if (task.version === version || version.startsWith(`${task.version}.`) || task.version === 'latest') return task;
+  }
+  return null;
+}
+
+// Wraps a build download so the sidebar can show progress and the final result.
+function trackDownload(kernel, version, run) {
+  if (installedBuild(kernel, version)) return run();
+  const key = `${kernel}:${version}`;
+  if (findTask(kernel, version)) return run();
+  const info = kernels.listKernels().find((entry) => entry.id === kernel);
+  const task = {
+    key,
+    kernel,
+    label: info ? info.label : kernel,
+    version,
+    status: 'downloading',
+    received: 0,
+    total: 0,
+    error: null,
+    startedAt: Date.now(),
+  };
+  downloads.set(key, task);
+  broadcastDownloads();
+  return run().then((result) => {
+    task.status = 'done';
+    task.received = task.total || task.received;
+    task.finishedAt = Date.now();
+    broadcastDownloads();
+    setTimeout(() => {
+      if (downloads.get(key) === task) {
+        downloads.delete(key);
+        broadcastDownloads();
+      }
+    }, 45000);
+    return result;
+  }).catch((err) => {
+    task.status = 'error';
+    task.error = err.message;
+    task.finishedAt = Date.now();
+    broadcastDownloads();
+    throw err;
+  });
+}
 
 // Chromium needs a debugging port per profile. Asking the OS for a free one avoids clashes between profiles.
 function freePort() {
@@ -364,16 +432,17 @@ async function launchProfile(id) {
     if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
     if (kernel === 'firefox') {
       if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
-      await launchFirefoxProfile(id, profile, customPath || await kernels.ensureBrowser('firefox', profile.browserVersion || (await kernels.listVersions('firefox'))[0]));
+      const firefoxVersion = profile.browserVersion || (await kernels.listVersions('firefox'))[0];
+      await launchFirefoxProfile(id, profile, customPath || await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion)));
       return;
     }
     if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
     const executable = customPath
       || (profile.browserVersion
-        ? await kernels.ensureBrowser(kernel, profile.browserVersion)
+        ? await trackDownload(kernel, profile.browserVersion, () => kernels.ensureBrowser(kernel, profile.browserVersion))
         : kernel === 'chrome'
           ? findChromium({ configuredPath: store.getSettings().chromiumPath, vendorDir: VENDOR_DIR })
-          : await kernels.ensureBrowser(kernel, 'latest'));
+          : await trackDownload(kernel, 'latest', () => kernels.ensureBrowser(kernel, 'latest')));
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
     if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
@@ -658,6 +727,12 @@ function setupIpc() {
   });
   ipcMain.handle('browsers:versions', (_e, kernel = 'chrome') => kernels.listVersions(kernel));
   ipcMain.handle('browsers:installed', (_e, kernel = 'chrome') => kernels.listInstalled(kernel));
+  ipcMain.handle('browsers:tasks', () => downloadList());
+  ipcMain.handle('browsers:dismiss-task', (_e, key) => {
+    downloads.delete(key);
+    broadcastDownloads();
+  });
+
   ipcMain.handle('browsers:stats', async () => {
     const list = kernels.listKernels();
     const groups = [];
@@ -705,7 +780,23 @@ function setupIpc() {
     const detected = findChromium({ configuredPath: settings.chromiumPath, vendorDir: VENDOR_DIR });
     return { ...settings, detected, dataDir: app.getPath('userData') };
   });
-  ipcMain.handle('settings:set', (_e, patch) => store.setSettings(patch));
+  ipcMain.handle('settings:set', (_e, patch) => {
+    const settings = store.setSettings(patch);
+    if ('launchOnBoot' in patch) {
+      try {
+        applyAutoStart({ enabled: Boolean(settings.launchOnBoot), app, isPackaged: app.isPackaged });
+      } catch (err) {
+        console.error('autostart:', err.message);
+      }
+    }
+    if ('updates' in patch && updater) updater.applySettings(settings);
+    return settings;
+  });
+
+  ipcMain.handle('updates:state', () => (updater ? updater.getState() : null));
+  ipcMain.handle('updates:check', () => updater && updater.check());
+  ipcMain.handle('updates:download', () => updater && updater.download());
+  ipcMain.handle('updates:install', () => updater && updater.install());
   ipcMain.handle('settings:reset', () => {
     const settings = store.resetSettings();
     notify();
@@ -839,13 +930,35 @@ if (!app.requestSingleInstanceLock()) {
       return null;
     });
     browserCache = path.join(app.getPath('userData'), 'browsers');
+    updater = createUpdater({
+      getSettings: () => store.getSettings(),
+      isPackaged: app.isPackaged,
+      currentVersion: app.getVersion(),
+      onChange: (state) => {
+        if (win && !win.isDestroyed()) win.webContents.send('updates:state', state);
+      },
+    });
+    updater.init();
+    try {
+      applyAutoStart({ enabled: Boolean(store.getSettings().launchOnBoot), app, isPackaged: app.isPackaged });
+    } catch (err) {
+      console.error('autostart:', err.message);
+    }
     kernels = createKernelRegistry({
       cacheDir: browserCache,
       onProgress: (progress) => {
-        if (win && !win.isDestroyed()) win.webContents.send('browsers:progress', progress);
+        const task = findTask(progress.kernel, String(progress.version || ''));
+        if (task) {
+          task.received = progress.downloaded;
+          task.total = progress.total;
+        }
+        broadcastDownloads();
       },
     });
     setupIpc();
     createWindow();
+    if (store.getSettings().updates?.checkOnLaunch !== false) {
+      setTimeout(() => updater.check(), 4000);
+    }
   });
 }

@@ -371,3 +371,16 @@ test('older profiles are numbered on load', () => {
   const next = store.saveProfile({ name: 'New' });
   assert.equal(next.number, 3);
 });
+
+test('update and autostart settings are stored', () => {
+  const store = createStore(tmpDir());
+  const initial = store.getSettings();
+  assert.equal(initial.launchOnBoot, false);
+  assert.deepEqual(initial.updates, { checkOnLaunch: true, autoDownload: true, installOnQuit: false });
+
+  store.setSettings({ launchOnBoot: true });
+  store.setSettings({ updates: { autoDownload: false, installOnQuit: true } });
+  const changed = store.getSettings();
+  assert.equal(changed.launchOnBoot, true);
+  assert.deepEqual(changed.updates, { checkOnLaunch: true, autoDownload: false, installOnQuit: true });
+});

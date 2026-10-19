@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  App as AntApp, Button, Card, Col, Descriptions, Divider, Input, Popconfirm, Row, Segmented, Select, Space, Switch, Tag, Typography,
+  App as AntApp, Button, Card, Col, Descriptions, Divider, Input, Popconfirm, Progress, Row, Segmented, Select, Space, Switch, Tag, Typography,
 } from 'antd';
 import {
   BgColorsOutlined, ChromeOutlined, CloudDownloadOutlined, DeleteOutlined, DesktopOutlined,
@@ -19,7 +19,7 @@ function formatBytes(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
 }
 
-export default function SettingsPage({ settings, kernels = [], themeMode, onTheme, onSettings, notify }) {
+export default function SettingsPage({ settings, kernels = [], update, themeMode, onTheme, onSettings, notify }) {
   const [path, setPath] = useState(settings.chromiumPath || '');
   const [stats, setStats] = useState([]);
   const [loadingStats, setLoadingStats] = useState(false);
@@ -135,6 +135,17 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
               Amazon and other services are reachable from that profile. It also shows the profile
               note and its number.
             </Text>
+            <Divider style={{ margin: '4px 0' }} />
+            <Space>
+              <Switch
+                checked={Boolean(settings.launchOnBoot)}
+                onChange={(checked) => patch({ launchOnBoot: checked })}
+              />
+              <Text>Start Morph Browser when the system starts</Text>
+            </Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Adds the app to the login items of this system.
+            </Text>
           </Space>
         </Card>
       </div>
@@ -219,6 +230,72 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
               </div>
             </Col>
           </Row>
+        </Card>
+      </div>
+
+      <div className="settings-card">
+        <Card title={<Space size={8}><CloudDownloadOutlined />Updates</Space>} size="small">
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            <Text>
+              Current version <Text code>v{info ? info.version : '—'}</Text>
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {update && update.status === 'checking' && 'Checking GitHub for a new stable release…'}
+              {update && update.detail ? update.detail : null}
+              {update && update.status === 'downloading' && `Downloading ${update.version || 'the update'}…`}
+              {update && update.status === 'downloaded' && `Version ${update.version} is ready to install.`}
+              {update && update.status === 'error' && `Update check failed: ${update.error}`}
+              {(!update || update.status === 'idle') && 'Checks the GitHub releases of this project.'}
+            </Text>
+            {update && update.status === 'downloading' && (
+              <Progress percent={update.progress || 0} size="small" status="active" />
+            )}
+            <Space wrap>
+              <Button
+                icon={<ReloadOutlined />}
+                loading={update && update.status === 'checking'}
+                onClick={() => api.checkUpdates().catch((err) => notify.error(err.message))}
+              >
+                Check now
+              </Button>
+              {update && update.status === 'available' && !update.dev && (
+                <Button type="primary" onClick={() => api.downloadUpdate().catch((err) => notify.error(err.message))}>
+                  Download update
+                </Button>
+              )}
+              {update && update.status === 'downloaded' && (
+                <Button type="primary" onClick={() => api.installUpdate().catch((err) => notify.error(err.message))}>
+                  Restart to update
+                </Button>
+              )}
+            </Space>
+            <Divider style={{ margin: '2px 0' }} />
+            <Space>
+              <Switch
+                checked={settings.updates ? settings.updates.checkOnLaunch !== false : true}
+                onChange={(checked) => patch({ updates: { checkOnLaunch: checked } })}
+              />
+              <Text>Check for updates on launch</Text>
+            </Space>
+            <Space>
+              <Switch
+                checked={settings.updates ? settings.updates.autoDownload !== false : true}
+                onChange={(checked) => patch({ updates: { autoDownload: checked } })}
+              />
+              <Text>Download new versions automatically</Text>
+            </Space>
+            <Space>
+              <Switch
+                checked={Boolean(settings.updates && settings.updates.installOnQuit)}
+                onChange={(checked) => patch({ updates: { installOnQuit: checked } })}
+              />
+              <Text>Install the downloaded update when the app quits</Text>
+            </Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Updates come from the stable GitHub releases. A downloaded update can always be installed
+              with “Restart to update”.
+            </Text>
+          </Space>
         </Card>
       </div>
 

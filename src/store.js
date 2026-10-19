@@ -28,6 +28,12 @@ const DEFAULT_SETTINGS = {
   apiToken: null,
   density: 'middle',
   rememberWindow: true,
+  launchOnBoot: false,
+  updates: {
+    checkOnLaunch: true,
+    autoDownload: true,
+    installOnQuit: false,
+  },
   defaults: {
     kernel: 'chrome',
     os: 'windows',
@@ -589,6 +595,15 @@ function createStore(dir) {
         data.settings.density = patch.density;
       }
       if ('rememberWindow' in patch) data.settings.rememberWindow = Boolean(patch.rememberWindow);
+      if ('launchOnBoot' in patch) data.settings.launchOnBoot = Boolean(patch.launchOnBoot);
+      if ('updates' in patch) {
+        const next = { ...data.settings.updates };
+        const input = patch.updates || {};
+        if ('checkOnLaunch' in input) next.checkOnLaunch = Boolean(input.checkOnLaunch);
+        if ('autoDownload' in input) next.autoDownload = Boolean(input.autoDownload);
+        if ('installOnQuit' in input) next.installOnQuit = Boolean(input.installOnQuit);
+        data.settings.updates = next;
+      }
       if ('window' in patch) {
         const bounds = patch.window;
         if (bounds === null) data.settings.window = null;

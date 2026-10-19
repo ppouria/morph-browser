@@ -68,15 +68,18 @@ function createKernelRegistry({
   arch = process.arch,
   onProgress = () => {},
 }) {
+  // Every progress event says which kernel produced it, so the download list can label the task.
+  const report = (kernel) => (progress) => onProgress({ ...progress, kernel });
+
   const managers = {
-    chrome: createBrowserManager({ cacheDir: path.join(cacheDir, 'chrome'), platform, arch, onProgress }),
-    cft: createCftManager({ cacheDir: path.join(cacheDir, 'cft'), platform, arch, onProgress }),
-    chromium: createChromiumManager({ cacheDir: path.join(cacheDir, 'chromium'), platform, arch, onProgress }),
-    ungoogled: createUngoogledManager({ cacheDir: path.join(cacheDir, 'ungoogled'), platform, arch, onProgress }),
-    fingerprint: createFingerprintManager({ cacheDir: path.join(cacheDir, 'fingerprint'), platform, arch, onProgress }),
-    brave: createBraveManager({ cacheDir: path.join(cacheDir, 'brave'), platform, arch, onProgress }),
+    chrome: createBrowserManager({ cacheDir: path.join(cacheDir, 'chrome'), platform, arch, onProgress: report('chrome') }),
+    cft: createCftManager({ cacheDir: path.join(cacheDir, 'cft'), platform, arch, onProgress: report('cft') }),
+    chromium: createChromiumManager({ cacheDir: path.join(cacheDir, 'chromium'), platform, arch, onProgress: report('chromium') }),
+    ungoogled: createUngoogledManager({ cacheDir: path.join(cacheDir, 'ungoogled'), platform, arch, onProgress: report('ungoogled') }),
+    fingerprint: createFingerprintManager({ cacheDir: path.join(cacheDir, 'fingerprint'), platform, arch, onProgress: report('fingerprint') }),
+    brave: createBraveManager({ cacheDir: path.join(cacheDir, 'brave'), platform, arch, onProgress: report('brave') }),
     thorium: createSystemManager({ kind: 'thorium', platform }),
-    firefox: createFirefoxManager({ cacheDir: path.join(cacheDir, 'firefox'), platform, arch, onProgress }),
+    firefox: createFirefoxManager({ cacheDir: path.join(cacheDir, 'firefox'), platform, arch, onProgress: report('firefox') }),
   };
 
   function manager(kernel) {

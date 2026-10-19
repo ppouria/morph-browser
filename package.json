@@ -44,7 +44,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "artifactName": "${name}-${version}-windows-setup.${ext}"
+      "artifactName": "${name}-${version}-windows-setup.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": true
     },
     "portable": {
       "artifactName": "${name}-${version}-windows-portable.${ext}"
@@ -53,6 +55,13 @@
       "target": [
         {
           "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -71,9 +80,15 @@
       "artifactName": "${name}-${version}-linux-${arch}.${ext}",
       "syncDesktopName": true
     },
-    "icon": "build/icon.png"
+    "icon": "build/icon.png",
+    "publish": {
+      "provider": "github",
+      "owner": "ppouria",
+      "repo": "morph-browser"
+    }
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "proxy-chain": "^3.0.1"
   },
   "devDependencies": {

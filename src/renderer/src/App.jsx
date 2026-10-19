@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  App as AntApp, ConfigProvider, Layout, Typography, theme,
+  Alert, App as AntApp, Button, ConfigProvider, Layout, Popover, Progress, Space, Typography, theme,
 } from 'antd';
 import {
-  AppstoreOutlined, ApiOutlined, DeleteOutlined, GithubOutlined, SettingOutlined,
+  AppstoreOutlined, ApiOutlined, CloudDownloadOutlined, DeleteOutlined, DownloadOutlined,
+  GithubOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import ProfilesPage from './ProfilesPage';
@@ -33,6 +34,60 @@ function useSystemDark() {
   return dark;
 }
 
+function formatSize(bytes) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
+}
+
+function updaterMessage(update) {
+  if (update.status === 'available') return `Version ${update.version} is available`;
+  if (update.status === 'downloading') return `Downloading update ${update.version || ''}…`.replace('  ', ' ');
+  if (update.status === 'downloaded') return `Update ${update.version} is ready to install`;
+  if (update.status === 'error') return 'Update check failed';
+  return '';
+}
+
+function DownloadsPanel({ tasks, onDismiss }) {
+  if (!tasks.length) {
+    return (
+      <div className="dl-empty">
+        No downloads yet. Launch a profile pinned to a build that is not on disk and it appears here.
+      </div>
+    );
+  }
+  return (
+    <div className="dl-list">
+      {tasks.map((task) => (
+        <div className="dl-item" key={task.key}>
+          <div className="dl-head">
+            <span className="dl-name">{task.label}</span>
+            <span className="dl-version">{task.version}</span>
+          </div>
+          {task.status === 'downloading' && (
+            <Progress
+              percent={task.total ? Math.min(100, Math.round((task.received / task.total) * 100)) : 0}
+              size="small"
+              showInfo={false}
+              status="active"
+            />
+          )}
+          <div className="dl-meta">
+            {task.status === 'downloading' && (
+              <span>{formatSize(task.received)}{task.total ? ` / ${formatSize(task.total)}` : ''}</span>
+            )}
+            {task.status === 'done' && <span className="dl-ok">Downloaded</span>}
+            {task.status === 'error' && <span className="dl-error">{task.error}</span>}
+            {task.status !== 'downloading' && (
+              <Button size="small" type="link" onClick={() => onDismiss(task.key)}>Dismiss</Button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Shell() {
   const { message } = AntApp.useApp();
   const systemDark = useSystemDark();
@@ -47,6 +102,9 @@ function Shell() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [siderOpen, setSiderOpen] = useState(false);
+  const [downloads, setDownloads] = useState([]);
+  const [update, setUpdate] = useState(null);
+  const [version, setVersion] = useState('');
   const [editor, setEditor] = useState({ open: false, profile: null });
   const [proxyEditor, setProxyEditor] = useState({ open: false, proxy: null });
 
@@ -78,7 +136,12 @@ function Shell() {
     refresh().catch((err) => message.error(err.message));
     api.listMajors().then(setMajors).catch(() => setMajors([]));
     api.listKernels().then(setKernels).catch(() => setKernels([]));
+    api.appInfo().then((info) => setVersion(info.version)).catch(() => {});
+    api.listDownloadTasks().then(setDownloads).catch(() => {});
+    api.updateState().then(setUpdate).catch(() => {});
     api.onChange(() => refresh().catch(() => {}));
+    api.onDownloads(setDownloads);
+    api.onUpdateState(setUpdate);
   }, [refresh, message]);
 
   const openEditor = useCallback((profile) => setEditor({ open: true, profile }), []);
@@ -172,6 +235,26 @@ function Shell() {
           </nav>
 
           <div className="side-bottom">
+            <Popover
+              title="Downloads"
+              trigger={['hover', 'click']}
+              placement="rightBottom"
+              content={(
+                <DownloadsPanel
+                  tasks={downloads}
+                  onDismiss={(key) => api.dismissDownloadTask(key).catch(() => {})}
+                />
+              )}
+            >
+              <button type="button" className="side-item" title="Downloads">
+                <span className="side-icon">
+                  <CloudDownloadOutlined />
+                  {downloads.some((task) => task.status === 'downloading') && <span className="side-dot" />}
+                </span>
+                {siderOpen && <span className="side-label">Downloads</span>}
+                {siderOpen && downloads.length > 0 && <span className="side-badge">{downloads.length}</span>}
+              </button>
+            </Popover>
             <button
               type="button"
               className={`side-item${page === 'settings' ? ' active' : ''}`}
@@ -190,12 +273,58 @@ function Shell() {
               <span className="side-icon"><GithubOutlined /></span>
               {siderOpen && <span className="side-label">GitHub</span>}
             </button>
+            {siderOpen && (
+              <button
+                type="button"
+                className="side-version"
+                onClick={() => setPage('settings')}
+                title={update && ['available', 'downloading', 'downloaded'].includes(update.status)
+                  ? 'An update is available'
+                  : 'Version'}
+              >
+                v{version || '—'}
+                {update && ['available', 'downloading', 'downloaded'].includes(update.status) && (
+                  <span className="side-version-dot" />
+                )}
+              </button>
+            )}
           </div>
         </aside>
 
         <Layout style={{ marginLeft: siderOpen ? 228 : 64, minHeight: '100vh', transition: 'margin-left 180ms ease' }}>
           <Content style={{ padding: '24px 28px 40px' }}>
             <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+              {update && ['available', 'downloading', 'downloaded', 'error'].includes(update.status) && (
+                <Alert
+                  style={{ marginBottom: 16 }}
+                  showIcon
+                  icon={<DownloadOutlined />}
+                  type={update.status === 'error' ? 'error' : update.status === 'downloaded' ? 'success' : 'info'}
+                  message={updaterMessage(update)}
+                  description={update.status === 'downloading' ? (
+                    <Progress percent={update.progress || 0} size="small" status="active" />
+                  ) : update.status === 'available' && update.dev ? (
+                    'This is the development build; the packaged app can download and install it.'
+                  ) : undefined}
+                  action={(
+                    <Space>
+                      {update.status === 'available' && !update.dev && (
+                        <Button size="small" type="primary" onClick={() => api.downloadUpdate().catch(() => {})}>
+                          Download
+                        </Button>
+                      )}
+                      {update.status === 'downloaded' && (
+                        <Button size="small" type="primary" onClick={() => api.installUpdate().catch(() => {})}>
+                          Restart to update
+                        </Button>
+                      )}
+                      {update.status === 'error' && (
+                        <Button size="small" onClick={() => api.checkUpdates().catch(() => {})}>Try again</Button>
+                      )}
+                    </Space>
+                  )}
+                />
+              )}
               <div style={{ marginBottom: 20 }}>
                 <Title level={4} style={{ margin: 0 }}>{pageTitle.title}</Title>
                 <Text type="secondary">{pageTitle.subtitle}</Text>
@@ -234,6 +363,7 @@ function Shell() {
                 <SettingsPage
                   settings={settings}
                   kernels={kernels}
+                  update={update}
                   themeMode={themeMode}
                   onTheme={handleTheme}
                   onSettings={applySettings}
