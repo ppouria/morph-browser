@@ -12,6 +12,7 @@ const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop, resolveMacBundle } = require('./chromium');
 const { startRelay, checkProxy, probeProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
+const { startChain } = require('./chain');
 const { parseProxyString } = require('./proxy-parse');
 const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
@@ -356,14 +357,19 @@ function notifyNotice(text, level = 'warning') {
   if (win && !win.isDestroyed()) win.webContents.send('profiles:notice', { text, level });
 }
 
+function appProxy() {
+  const setting = store.getSettings().upstreamProxy;
+  return setting && setting.enabled && setting.proxy ? setting.proxy : null;
+}
+
 // When a profile has a fallback configured, look at the primary proxy first. A dead proxy would
 // otherwise leave the browser without a connection.
-async function chooseProxy(profile) {
+async function chooseProxy(profile, upstream = null) {
   if (!profile.proxy) return { proxy: null, fallback: null };
   const mode = profile.fallback?.mode || 'none';
   if (mode === 'none') return { proxy: profile.proxy, fallback: null };
 
-  const reachable = await probeProxy(profile.proxy, 6000);
+  const reachable = await probeProxy(profile.proxy, 6000, { upstream });
   if (reachable) return { proxy: profile.proxy, fallback: null };
 
   if (mode === 'direct') {
@@ -379,13 +385,15 @@ async function chooseProxy(profile) {
 
 // Firefox has no DevTools protocol: cookies go through WebDriver BiDi and everything else is a
 // profile preference. The process is treated like Chromium once it is running.
-async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = null) {
+async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = null, upstream = null) {
   const kernel = 'firefox';
-  const geo = profile.fingerprint && needsGeo(profile) && proxy ? await lookupGeo(proxy) : null;
+  const geo = profile.fingerprint && needsGeo(profile) && (proxy || upstream)
+    ? await lookupGeo(proxy || upstream, { upstream: proxy ? upstream : null })
+    : null;
   const versions = await kernels.listVersions('firefox').catch(() => []);
   const version = uaVersion || profile.browserVersion || versions[0] || '128.0';
   const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo });
-  const relay = proxy ? await startRelay(proxy) : null;
+  const relay = upstream ? await startChain(upstream, proxy) : proxy ? await startRelay(proxy) : null;
 
   try {
     const dir = profileDir(id);
@@ -470,7 +478,8 @@ async function launchProfile(id) {
       : profile.executablePath;
     if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
     if (kernel === 'firefox') {
-      const chosen = await chooseProxy(profile);
+      const upstream = appProxy();
+      const chosen = await chooseProxy(profile, upstream);
       if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
       const versions = await kernels.listVersions('firefox').catch(() => []);
       const firefoxVersion = profile.browserVersion || versions[0];
@@ -484,7 +493,7 @@ async function launchProfile(id) {
         firefoxExecutable = await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion));
       }
       const firefoxUaVersion = firefoxVersion || await detectFirefoxVersion(firefoxExecutable);
-      await launchFirefoxProfile(id, profile, firefoxExecutable, chosen.proxy, firefoxUaVersion);
+      await launchFirefoxProfile(id, profile, firefoxExecutable, chosen.proxy, firefoxUaVersion, upstream);
       return;
     }
     if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
@@ -513,12 +522,16 @@ async function launchProfile(id) {
     }
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
-    const chosen = await chooseProxy(profile);
+    const upstream = appProxy();
+    const chosen = await chooseProxy(profile, upstream);
     if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
 
     // "Based on IP" needs the exit IP's timezone and country; a failed lookup falls back to the
     // real system values instead of blocking the launch.
-    const geo = needsGeo(profile) && chosen.proxy ? await lookupGeo(chosen.proxy) : null;
+    const exitProxy = chosen.proxy || upstream;
+    const geo = needsGeo(profile) && exitProxy
+      ? await lookupGeo(exitProxy, { upstream: chosen.proxy ? upstream : null })
+      : null;
 
     // A Chrome install on macOS/Windows is not a downloaded build, so the stored version can be
     // stale or absent; the binary's real major is the only safe one there.
@@ -571,7 +584,7 @@ async function launchProfile(id) {
 
     fs.mkdirSync(profileDir(id), { recursive: true });
     applyProfilePrefs(profileDir(id), profile.prefs);
-    relay = chosen.proxy ? await startRelay(chosen.proxy) : null;
+    relay = upstream ? await startChain(upstream, chosen.proxy) : chosen.proxy ? await startRelay(chosen.proxy) : null;
 
     const emulation = {
       timezone: native ? null : resolved.timezone,
@@ -783,6 +796,7 @@ function setupIpc() {
 
   ipcMain.handle('proxies:list', () => store.listProxies());
   ipcMain.handle('proxies:save', async (_e, input) => {
+    const upstream = appProxy();
     const existing = input.id ? store.listProxies().find((entry) => entry.id === input.id) : null;
     let location = input.location || null;
     const unchanged = existing
@@ -793,7 +807,7 @@ function setupIpc() {
     if (!location && unchanged) location = existing.location || null;
     if (!location) {
       try {
-        location = await lookupProxyLocation(input);
+        location = await lookupProxyLocation(input, { upstream });
       } catch {
         location = null;
       }
@@ -806,13 +820,14 @@ function setupIpc() {
   ipcMain.handle('proxies:recheck', async (_e, id) => {
     const proxy = store.listProxies().find((entry) => entry.id === id);
     if (!proxy) throw new Error('proxy not found');
-    const location = await lookupProxyLocation(proxy);
+    const location = await lookupProxyLocation(proxy, { upstream: appProxy() });
     const saved = store.saveProxy({ ...proxy, location });
     notify();
     return saved;
   });
 
   ipcMain.handle('proxies:import', async (_e, text, options = {}) => {
+    const upstream = appProxy();
     const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const existing = store.listProxies();
     const parsed = [];
@@ -846,7 +861,7 @@ function setupIpc() {
         let location = null;
         if (options.check !== false) {
           try {
-            location = await lookupProxyLocation(entry);
+            location = await lookupProxyLocation(entry, { upstream });
           } catch {
             location = null;
           }
@@ -921,11 +936,12 @@ function setupIpc() {
   });
 
   ipcMain.handle('proxy:parse', (_e, text, defaultType) => parseProxyString(text, defaultType));
-  ipcMain.handle('proxy:check', async (_e, proxy) => {
+  ipcMain.handle('proxy:check', async (_e, proxy, options = {}) => {
     const clean = normalizeProxy(proxy);
     if (!clean) throw new Error('enter a proxy host first');
-    const exit = await checkProxy(clean);
-    const location = await lookupProxyLocation(clean).catch(() => null);
+    const upstream = options.direct ? null : appProxy();
+    const exit = await checkProxy(clean, undefined, { upstream });
+    const location = await lookupProxyLocation(clean, { upstream }).catch(() => null);
     return { ...exit, location };
   });
 
@@ -973,7 +989,10 @@ function setupIpc() {
   ipcMain.handle('shell:open-external', (_e, url) => {
     // Only the project page can be opened, so a compromised page cannot launch arbitrary URLs.
     const target = String(url || '');
-    const allowed = ['https://github.com/ppouria/morph-browser', 'https://opensource.org/license/mit'];
+    const allowed = [
+      'https://github.com/ppouria/morph-browser',
+      'https://opensource.org/license/mit',
+    ];
     if (!allowed.some((prefix) => target.startsWith(prefix))) throw new Error('blocked URL');
     return shell.openExternal(target);
   });

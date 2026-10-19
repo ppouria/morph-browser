@@ -87,7 +87,11 @@ test('linux autostart writes and removes the desktop entry', (t) => {
   assert.equal(fs.existsSync(file), false);
 });
 
-test('builds without self-update report it instead of failing', async () => {
+test('builds without self-update report it instead of failing', async (t) => {
+  const original = global.fetch;
+  t.after(() => { global.fetch = original; });
+  global.fetch = async () => ({ status: 404, ok: false });
+
   const states = [];
   const updater = createUpdater({
     getSettings: () => ({ updates: {} }),
@@ -98,5 +102,53 @@ test('builds without self-update report it instead of failing', async () => {
   await updater.check();
   const last = states[states.length - 1];
   assert.equal(last.status, 'not-available');
-  assert.match(last.detail, /AppImage, installer and dmg/);
+  assert.match(last.detail, /No stable release/);
+});
+
+test('a build that cannot self-update still checks GitHub for a newer release', async (t) => {
+  const original = global.fetch;
+  t.after(() => { global.fetch = original; });
+  global.fetch = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => ({
+      tag_name: 'v0.2.0',
+      body: 'Notes',
+      html_url: 'https://github.com/ppouria/morph-browser/releases/tag/v0.2.0',
+    }),
+  });
+
+  const states = [];
+  const updater = createUpdater({
+    getSettings: () => ({ updates: {} }),
+    onChange: (state) => states.push(state),
+    currentVersion: '0.1.0',
+    supported: false,
+  });
+  await updater.check();
+  const available = states[states.length - 1];
+  assert.equal(available.status, 'available');
+  assert.equal(available.version, '0.2.0');
+  assert.equal(available.canInstall, false);
+  assert.match(available.detail, /available on GitHub/);
+});
+
+test('an up-to-date client is reported as up to date', async (t) => {
+  const original = global.fetch;
+  t.after(() => { global.fetch = original; });
+  global.fetch = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => ({ tag_name: 'v0.1.0', body: '', html_url: 'https://example.test' }),
+  });
+
+  const states = [];
+  const updater = createUpdater({
+    getSettings: () => ({ updates: {} }),
+    onChange: (state) => states.push(state),
+    currentVersion: '0.1.0',
+    supported: false,
+  });
+  await updater.check();
+  assert.match(states[states.length - 1].detail, /latest version \(v0\.1\.0\)/);
 });

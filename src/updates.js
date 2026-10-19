@@ -62,6 +62,7 @@ function createUpdater({
     canInstall: false,
     dev: !isPackaged,
     supported,
+    url: null,
   };
   let autoUpdater = null;
 
@@ -85,7 +86,12 @@ function createUpdater({
       canInstall: false,
       error: null,
     }));
-    autoUpdater.on('update-not-available', () => set({ status: 'not-available', version: null, error: null }));
+    autoUpdater.on('update-not-available', () => set({
+      status: 'not-available',
+      version: null,
+      error: null,
+      detail: 'You are running the latest version.',
+    }));
     autoUpdater.on('download-progress', (progress) => set({
       status: 'downloading',
       progress: Math.min(100, Math.round(progress.percent || 0)),
@@ -102,45 +108,44 @@ function createUpdater({
   }
 
   async function check() {
-    if (!supported) {
-      set({
-        status: 'not-available',
-        version: null,
-        error: null,
-        detail: 'Auto-update is available in the AppImage, installer and dmg builds.',
-      });
-      return;
-    }
     set({ status: 'checking', error: null, progress: 0 });
-    if (isPackaged) {
-      if (!autoUpdater) set({ status: 'error', error: 'updater is not ready' });
-      else {
-        try {
-          await autoUpdater.checkForUpdates();
-        } catch (err) {
-          set({ status: 'error', error: err.message });
+
+    // Development builds and packages that cannot install updates (deb, portable) still ask GitHub,
+    // so "Check now" answers the only question that matters: is there a newer release?
+    if (!isPackaged || !supported) {
+      try {
+        const release = await latestRelease();
+        if (!release.version) {
+          set({ status: 'not-available', version: null, detail: 'No stable release has been published yet.' });
+        } else if (compareVersions(release.version, current) > 0) {
+          set({
+            status: 'available',
+            version: release.version,
+            notes: release.notes,
+            url: release.url,
+            detail: `Version ${release.version} is available on GitHub.`,
+            canInstall: false,
+          });
+        } else {
+          set({
+            status: 'not-available',
+            version: null,
+            detail: `You are running the latest version (v${current}).`,
+          });
         }
+      } catch (err) {
+        set({ status: 'error', error: err.message });
       }
       return;
     }
 
-    try {
-      const release = await latestRelease();
-      if (!release.version) {
-        set({ status: 'not-available', version: null, detail: 'No stable release has been published yet.' });
-      } else if (compareVersions(release.version, current) > 0) {
-        set({
-          status: 'available',
-          version: release.version,
-          notes: release.notes,
-          detail: `Version ${release.version} is available.`,
-          canInstall: false,
-        });
-      } else {
-        set({ status: 'not-available', version: release.version, detail: 'You are on the latest stable release.' });
+    if (!autoUpdater) set({ status: 'error', error: 'updater is not ready' });
+    else {
+      try {
+        await autoUpdater.checkForUpdates();
+      } catch (err) {
+        set({ status: 'error', error: err.message });
       }
-    } catch (err) {
-      set({ status: 'error', error: err.message });
     }
   }
 

@@ -34,6 +34,10 @@ const DEFAULT_SETTINGS = {
     autoDownload: true,
     installOnQuit: false,
   },
+  upstreamProxy: {
+    enabled: false,
+    proxy: null,
+  },
   defaults: {
     kernel: 'chrome',
     os: 'windows',
@@ -384,7 +388,14 @@ function createStore(dir) {
     const data = {
       profiles: (parsed.profiles || []).map(withDefaults),
       proxies: parsed.proxies || [],
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ...(parsed.settings || {}),
+        upstreamProxy: {
+          ...DEFAULT_SETTINGS.upstreamProxy,
+          ...((parsed.settings || {}).upstreamProxy || {}),
+        },
+      },
       nextNumber: Number.isInteger(parsed.nextNumber) ? parsed.nextNumber : 0,
     };
 
@@ -622,7 +633,11 @@ function createStore(dir) {
 
     resetSettings() {
       const data = load();
-      data.settings = { ...DEFAULT_SETTINGS, defaults: { ...DEFAULT_SETTINGS.defaults } };
+      data.settings = {
+        ...DEFAULT_SETTINGS,
+        defaults: { ...DEFAULT_SETTINGS.defaults },
+        upstreamProxy: { ...DEFAULT_SETTINGS.upstreamProxy },
+      };
       save(data);
       return data.settings;
     },
@@ -650,6 +665,13 @@ function createStore(dir) {
         if ('autoDownload' in input) next.autoDownload = Boolean(input.autoDownload);
         if ('installOnQuit' in input) next.installOnQuit = Boolean(input.installOnQuit);
         data.settings.updates = next;
+      }
+      if ('upstreamProxy' in patch) {
+        const input = patch.upstreamProxy || {};
+        const next = { ...data.settings.upstreamProxy };
+        if ('enabled' in input) next.enabled = Boolean(input.enabled);
+        if ('proxy' in input) next.proxy = input.proxy ? normalizeProxy(input.proxy) : null;
+        data.settings.upstreamProxy = next;
       }
       if ('window' in patch) {
         const bounds = patch.window;

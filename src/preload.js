@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   dismissDownloadTask: (key) => ipcRenderer.invoke('browsers:dismiss-task', key),
   removeAllBuilds: (kernel) => ipcRenderer.invoke('browsers:remove-all', kernel),
   parseProxy: (text, defaultType) => ipcRenderer.invoke('proxy:parse', text, defaultType),
-  checkProxy: (proxy) => ipcRenderer.invoke('proxy:check', proxy),
+  checkProxy: (proxy, options) => ipcRenderer.invoke('proxy:check', proxy, options),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),

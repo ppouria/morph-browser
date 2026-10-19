@@ -427,3 +427,21 @@ test('a profile can carry a fallback proxy or a direct fallback', () => {
   assert.throws(() => store.saveProfile({ name: 'Bad', fallback: { mode: 'sometimes' } }), /fallback mode/);
   assert.deepEqual(store.getProfile(direct.id).fallback, { mode: 'direct', proxy: null });
 });
+
+test('the app-wide proxy is stored and can be disabled', () => {
+  const store = createStore(tmpDir());
+  const next = store.setSettings({
+    upstreamProxy: {
+      enabled: true,
+      proxy: { type: 'socks5', host: 'vpn.example', port: 1080, username: 'u', password: 'p' },
+    },
+  });
+  assert.equal(next.upstreamProxy.enabled, true);
+  assert.equal(next.upstreamProxy.proxy.type, 'socks5');
+  assert.equal(next.upstreamProxy.proxy.host, 'vpn.example');
+  const off = store.setSettings({ upstreamProxy: { enabled: false } });
+  assert.equal(off.upstreamProxy.enabled, false);
+  assert.equal(off.upstreamProxy.proxy.port, 1080);
+  const cleared = store.setSettings({ upstreamProxy: { proxy: null } });
+  assert.equal(cleared.upstreamProxy.proxy, null);
+});

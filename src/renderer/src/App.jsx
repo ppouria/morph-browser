@@ -323,12 +323,19 @@ function Shell() {
                   message={updaterMessage(update)}
                   description={update.status === 'downloading' ? (
                     <Progress percent={update.progress || 0} size="small" status="active" />
+                  ) : update.status === 'available' && update.supported === false ? (
+                    'This build cannot update itself. Download the new release from GitHub.'
                   ) : update.status === 'available' && update.dev ? (
                     'This is the development build; the packaged app can download and install it.'
                   ) : undefined}
                   action={(
                     <Space>
-                      {update.status === 'available' && !update.dev && (
+                      {update.status === 'available' && update.supported === false && (
+                        <Button size="small" type="primary" onClick={() => api.openExternal('https://github.com/ppouria/morph-browser/releases/latest').catch(() => {})}>
+                          Open release
+                        </Button>
+                      )}
+                      {update.status === 'available' && update.supported !== false && !update.dev && (
                         <Button size="small" type="primary" onClick={() => api.downloadUpdate().catch(() => {})}>
                           Download
                         </Button>

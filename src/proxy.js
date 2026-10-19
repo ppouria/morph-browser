@@ -1,5 +1,6 @@
 const http = require('node:http');
 const { Server } = require('proxy-chain');
+const { startChain } = require('./chain');
 
 function upstreamUrl({ type, host, port, username, password }) {
   const auth = username ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@` : '';
@@ -47,34 +48,36 @@ function requestThroughRelay(relay, url, timeoutMs = 15000) {
   });
 }
 
-// A quick "is this proxy alive" probe used before falling back at launch.
-async function probeProxy(proxy, timeoutMs = 6000) {
+// Checks and lookups can be sent through the app-wide proxy too, so a profile proxy that is only
+// reachable through the app proxy still works.
+async function withProxy(proxy, upstream, work) {
+  const relay = upstream ? await startChain(upstream, proxy) : await startRelay(proxy);
   try {
-    const relay = await startRelay(proxy);
-    try {
-      await requestThroughRelay(relay, 'http://api.ipify.org/?format=json', timeoutMs);
-      return true;
-    } finally {
-      await relay.close().catch(() => {});
-    }
-  } catch {
-    return false;
-  }
-}
-
-async function checkProxy(proxy, url = 'http://api.ipify.org/?format=json') {
-  const relay = await startRelay(proxy);
-  try {
-    return JSON.parse(await requestThroughRelay(relay, url));
+    return await work(relay);
   } finally {
     await relay.close().catch(() => {});
   }
 }
 
-// Country, city and IP of a saved proxy, shown next to its name in the app.
-async function lookupProxyLocation(proxy, { timeoutMs = 12000 } = {}) {
-  const relay = await startRelay(proxy);
+// A quick "is this proxy alive" probe used before falling back at launch.
+async function probeProxy(proxy, timeoutMs = 6000, { upstream = null } = {}) {
   try {
+    return await withProxy(proxy, upstream, async (relay) => {
+      await requestThroughRelay(relay, 'http://api.ipify.org/?format=json', timeoutMs);
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function checkProxy(proxy, url = 'http://api.ipify.org/?format=json', { upstream = null } = {}) {
+  return withProxy(proxy, upstream, async (relay) => JSON.parse(await requestThroughRelay(relay, url)));
+}
+
+// Country, city and IP of a saved proxy, shown next to its name in the app.
+async function lookupProxyLocation(proxy, { timeoutMs = 12000, upstream = null } = {}) {
+  return withProxy(proxy, upstream, async (relay) => {
     try {
       const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,country,countryCode,city,query', timeoutMs);
       const data = JSON.parse(body);
@@ -100,30 +103,27 @@ async function lookupProxyLocation(proxy, { timeoutMs = 12000 } = {}) {
       city: data.city || null,
       checkedAt: Date.now(),
     };
-  } finally {
-    await relay.close().catch(() => {});
-  }
+  });
 }
 
 // Timezone, country and coordinates of the exit IP, used by the "Based on IP" fingerprint modes.
 // A failure is not fatal: the caller falls back to the real system values.
-async function lookupGeo(proxy, { timeoutMs = 5000 } = {}) {
+async function lookupGeo(proxy, { timeoutMs = 5000, upstream = null } = {}) {
   if (!proxy) return null;
-  const relay = await startRelay(proxy);
   try {
-    const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
-    const data = JSON.parse(body);
-    if (data.status !== 'success') return null;
-    return {
-      timezone: data.timezone || null,
-      countryCode: data.countryCode || null,
-      latitude: Number.isFinite(data.lat) ? data.lat : null,
-      longitude: Number.isFinite(data.lon) ? data.lon : null,
-    };
+    return await withProxy(proxy, upstream, async (relay) => {
+      const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
+      const data = JSON.parse(body);
+      if (data.status !== 'success') return null;
+      return {
+        timezone: data.timezone || null,
+        countryCode: data.countryCode || null,
+        latitude: Number.isFinite(data.lat) ? data.lat : null,
+        longitude: Number.isFinite(data.lon) ? data.lon : null,
+      };
+    });
   } catch {
     return null;
-  } finally {
-    await relay.close().catch(() => {});
   }
 }
 

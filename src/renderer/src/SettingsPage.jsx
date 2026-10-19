@@ -3,12 +3,12 @@ import {
   App as AntApp, Button, Card, Col, Descriptions, Divider, Input, Popconfirm, Progress, Row, Segmented, Select, Space, Switch, Tag, Typography,
 } from 'antd';
 import {
-  BgColorsOutlined, ChromeOutlined, CloudDownloadOutlined, DeleteOutlined, DesktopOutlined,
+  ApiOutlined, BgColorsOutlined, ChromeOutlined, CloudDownloadOutlined, DeleteOutlined, DesktopOutlined,
   FolderOpenOutlined, GithubOutlined, IdcardOutlined, InfoCircleOutlined, ReloadOutlined,
   RocketOutlined, ToolOutlined,
 } from '@ant-design/icons';
 import api from './api';
-import { versionLabel } from './format';
+import { countryFlag, versionLabel } from './format';
 import { OS_OPTIONS, SCREEN_PRESETS } from './profileOptions';
 import { KERNEL_ICONS } from './kernelIcons';
 
@@ -18,6 +18,124 @@ function formatBytes(bytes) {
   if (!bytes) return '0 MB';
   const mb = bytes / 1024 / 1024;
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${Math.round(mb)} MB`;
+}
+
+
+function AppProxyCard({ settings, patch, notify }) {
+  const stored = settings.upstreamProxy || { enabled: false, proxy: null };
+  const [type, setType] = useState((stored.proxy && stored.proxy.type) || 'http');
+  const [hostPort, setHostPort] = useState(stored.proxy ? `${stored.proxy.host}:${stored.proxy.port}` : '');
+  const [username, setUsername] = useState((stored.proxy && stored.proxy.username) || '');
+  const [password, setPassword] = useState((stored.proxy && stored.proxy.password) || '');
+  const [check, setCheck] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const proxy = settings.upstreamProxy && settings.upstreamProxy.proxy;
+    setType((proxy && proxy.type) || 'http');
+    setHostPort(proxy ? `${proxy.host}:${proxy.port}` : '');
+    setUsername((proxy && proxy.username) || '');
+    setPassword((proxy && proxy.password) || '');
+  }, [settings.upstreamProxy]);
+
+  const build = async () => {
+    if (!hostPort.trim()) throw new Error('enter the proxy host and port first');
+    const parsed = await api.parseProxy(hostPort, type);
+    return {
+      ...parsed,
+      username: parsed.username || username,
+      password: parsed.password || password,
+    };
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const proxy = await build();
+      await patch({ upstreamProxy: { enabled: true, proxy } }, 'App proxy saved and enabled');
+      setCheck(null);
+    } catch (err) {
+      notify.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const test = async () => {
+    setCheck({ loading: true });
+    try {
+      const proxy = await build();
+      const result = await api.checkProxy(proxy, { direct: true });
+      const place = result.location
+        ? ` · ${countryFlag(result.location.countryCode)} ${result.location.country || result.location.countryCode}`
+        : '';
+      setCheck({ ok: true, text: `Exit IP ${result.ip}${place}` });
+    } catch (err) {
+      setCheck({ ok: false, text: err.message });
+    }
+  };
+
+  return (
+    <Card title={<Space size={8}><ApiOutlined />App proxy</Space>} size="small">
+      <Space direction="vertical" size={8} style={{ width: '100%' }}>
+        <Space>
+          <Switch
+            checked={Boolean(stored.enabled)}
+            disabled={!stored.proxy}
+            onChange={(checked) => patch({ upstreamProxy: { enabled: checked } })}
+          />
+          <Text>Route every profile through this proxy</Text>
+        </Space>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          A profile with its own proxy is chained after this one: app proxy → profile proxy → site.
+          A profile without a proxy uses this proxy directly. Turn the switch off to bypass it.
+        </Text>
+        <Row gutter={8}>
+          <Col span={9}>
+            <Text style={{ fontSize: 12 }}>Type</Text>
+            <Select
+              value={type}
+              onChange={setType}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'http', label: 'HTTP' },
+                { value: 'https', label: 'HTTPS' },
+                { value: 'socks5', label: 'SOCKS5' },
+              ]}
+            />
+          </Col>
+          <Col span={15}>
+            <Text style={{ fontSize: 12 }}>Host : Port</Text>
+            <Input
+              value={hostPort}
+              onChange={(event) => setHostPort(event.target.value)}
+              placeholder="vpn.example:8080 or host:port:user:pass"
+            />
+          </Col>
+        </Row>
+        <Row gutter={8}>
+          <Col span={12}>
+            <Text style={{ fontSize: 12 }}>Username</Text>
+            <Input value={username} onChange={(event) => setUsername(event.target.value)} />
+          </Col>
+          <Col span={12}>
+            <Text style={{ fontSize: 12 }}>Password</Text>
+            <Input.Password value={password} onChange={(event) => setPassword(event.target.value)} />
+          </Col>
+        </Row>
+        <Space wrap>
+          <Button onClick={test} loading={check && check.loading}>Check proxy</Button>
+          <Button type="primary" onClick={save} loading={saving}>Save proxy</Button>
+          {check && !check.loading && (
+            <Text style={{ fontSize: 12 }} type={check.ok ? undefined : 'danger'}>{check.text}</Text>
+          )}
+        </Space>
+        {stored.enabled && !stored.proxy && (
+          <Text type="warning" style={{ fontSize: 12 }}>Save a proxy before enabling it.</Text>
+        )}
+      </Space>
+    </Card>
+  );
 }
 
 export default function SettingsPage({ settings, kernels = [], update, themeMode, onTheme, onSettings, notify }) {
@@ -151,6 +269,10 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
               </Text>
             </Space>
           </Card>
+        </div>
+
+        <div className="settings-card">
+          <AppProxyCard settings={settings} patch={patch} notify={notify} />
         </div>
 
         <div className="settings-card">
@@ -292,9 +414,14 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
                 >
                   Check now
                 </Button>
-                {update && update.status === 'available' && !update.dev && (
+                {update && update.status === 'available' && update.supported !== false && !update.dev && (
                   <Button type="primary" onClick={() => api.downloadUpdate().catch((err) => notify.error(err.message))}>
                     Download update
+                  </Button>
+                )}
+                {update && update.status === 'available' && (update.dev || update.supported === false) && (
+                  <Button onClick={() => api.openExternal('https://github.com/ppouria/morph-browser/releases/latest').catch((err) => notify.error(err.message))}>
+                    Open release
                   </Button>
                 )}
                 {update && update.status === 'downloaded' && (

@@ -52,6 +52,16 @@ on the local machine: there is no account, no cloud sync and no team service.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
 
+## App proxy
+
+- Settings can route every profile through one app-level HTTP, HTTPS or SOCKS5 proxy.
+- When a profile also has its own proxy, the two are chained: the browser connects to the app proxy
+  first, and the profile proxy is reached through it. A profile without a proxy uses the app proxy
+  directly.
+- The switch turns the chain off without deleting the saved proxy.
+- Proxy checks and saved-proxy location lookups use the same chain, except when checking the app
+  proxy itself.
+
 ## Start page
 
 - The first tab is a local connection check page. It shows the exit IP, location, WebRTC status and
@@ -72,6 +82,8 @@ on the local machine: there is no account, no cloud sync and no team service.
 
 - On launch the app checks the latest stable release on GitHub, downloads it when allowed, and offers
   "Restart to update".
+- "Check now" always asks GitHub. On a build that cannot update itself (deb, portable) it reports the
+  newer version and opens the release page instead of downloading.
 - Windows uses the NSIS installer and updates in place without touching profile data.
 - Linux auto-update works for the AppImage, and Windows auto-update for the installer; the .deb
   and the portable build cannot update themselves.
