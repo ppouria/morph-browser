@@ -80,6 +80,16 @@ function clampNumber(value, min, max, fallback, round = true) {
   return round ? Math.round(clamped) : clamped;
 }
 
+const FALLBACK_MODES = ['none', 'direct', 'proxy'];
+
+function normalizeFallback(input) {
+  const source = input || {};
+  const mode = pickEnum(source.mode, FALLBACK_MODES, 'none', 'fallback mode');
+  const proxy = mode === 'proxy' ? normalizeProxy(source.proxy) : null;
+  if (mode === 'proxy' && !proxy) throw new Error('a fallback proxy is required');
+  return { mode, proxy };
+}
+
 function normalizeProxyLocation(location) {
   if (!location) return null;
   const countryCode = String(location.countryCode || '').toUpperCase();
@@ -348,6 +358,7 @@ function withDefaults(profile) {
     launchArgs: profile.launchArgs || '',
     totp: profile.totp || null,
     number: Number.isInteger(profile.number) && profile.number > 0 ? profile.number : null,
+    fallback: normalizeFallback(profile.fallback),
     lastOpenedAt: profile.lastOpenedAt || null,
     lastTabs: Array.isArray(profile.lastTabs) ? profile.lastTabs.slice(0, 30) : [],
     deletedAt: profile.deletedAt || null,
@@ -412,6 +423,7 @@ function createStore(dir) {
       userAgent: normalizeUserAgent(input.userAgent),
       executablePath: normalizeExecutablePath(input.executablePath),
       proxy: normalizeProxy(input.proxy),
+      fallback: normalizeFallback(input.fallback),
       browserVersion: normalizeBrowserVersion(input.browserVersion),
       startUrls: normalizeStartUrls(input.startUrls),
       cookies: normalizeCookies(input.cookies),
@@ -678,6 +690,7 @@ module.exports = {
   createStore,
   normalizeProxy,
   normalizeProxyLocation,
+  normalizeFallback,
   normalizeBrowserVersion,
   normalizeStartUrls,
   normalizeCookies,

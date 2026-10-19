@@ -51,5 +51,6 @@ contextBridge.exposeInMainWorld('api', {
   onChange: (callback) => ipcRenderer.on('profiles:changed', () => callback()),
   onBrowserProgress: (callback) => ipcRenderer.on('browsers:progress', (_e, progress) => callback(progress)),
   onDownloads: (callback) => ipcRenderer.on('browsers:progress', (_e, tasks) => callback(tasks)),
+  onNotice: (callback) => ipcRenderer.on('profiles:notice', (_e, notice) => callback(notice)),
   onUpdateState: (callback) => ipcRenderer.on('updates:state', (_e, state) => callback(state)),
 });

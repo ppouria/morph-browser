@@ -47,6 +47,21 @@ function requestThroughRelay(relay, url, timeoutMs = 15000) {
   });
 }
 
+// A quick "is this proxy alive" probe used before falling back at launch.
+async function probeProxy(proxy, timeoutMs = 6000) {
+  try {
+    const relay = await startRelay(proxy);
+    try {
+      await requestThroughRelay(relay, 'http://api.ipify.org/?format=json', timeoutMs);
+      return true;
+    } finally {
+      await relay.close().catch(() => {});
+    }
+  } catch {
+    return false;
+  }
+}
+
 async function checkProxy(proxy, url = 'http://api.ipify.org/?format=json') {
   const relay = await startRelay(proxy);
   try {
@@ -112,4 +127,4 @@ async function lookupGeo(proxy, { timeoutMs = 5000 } = {}) {
   }
 }
 
-module.exports = { startRelay, upstreamUrl, checkProxy, lookupGeo, lookupProxyLocation, requestThroughRelay };
+module.exports = { startRelay, upstreamUrl, checkProxy, probeProxy, lookupGeo, lookupProxyLocation, requestThroughRelay };

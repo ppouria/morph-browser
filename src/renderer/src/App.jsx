@@ -142,6 +142,11 @@ function Shell() {
     api.onChange(() => refresh().catch(() => {}));
     api.onDownloads(setDownloads);
     api.onUpdateState(setUpdate);
+    api.onNotice((notice) => {
+      if (!notice) return;
+      if (notice.level === 'error') message.error(notice.text);
+      else message.warning(notice.text);
+    });
   }, [refresh, message]);
 
   const openEditor = useCallback((profile) => setEditor({ open: true, profile }), []);

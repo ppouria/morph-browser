@@ -348,6 +348,26 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
   const tagSuggestions = useMemo(() => [...new Set(profiles.flatMap((item) => item.tags || []))]
     .sort((a, b) => a.localeCompare(b)), [profiles]);
 
+  const fallbackOptions = useMemo(() => [
+    { value: 'none', label: 'No fallback' },
+    { value: 'direct', label: 'Direct connection' },
+    ...proxies.map((proxy) => ({
+      value: proxy.id,
+      label: `${proxyLocationText(proxy) ? `${proxyLocationText(proxy)} ` : ''}${proxy.name}`,
+      note: `${proxy.host}:${proxy.port}`,
+    })),
+  ], [proxies]);
+
+  const fallbackValue = useMemo(() => {
+    if (!draft.fallback || draft.fallback.mode !== 'proxy' || !draft.fallback.proxy) return draft.fallback?.mode || 'none';
+    const saved = proxies.find((proxy) => proxy.host === draft.fallback.proxy.host
+      && proxy.port === draft.fallback.proxy.port
+      && proxy.type === draft.fallback.proxy.type);
+    return saved ? saved.id : 'none';
+  }, [draft.fallback, proxies]);
+
+  const fallbackProxy = proxies.find((proxy) => proxy.id === fallbackValue);
+
   const kernelOptions = useMemo(() => (kernels.length ? kernels : [
     { id: 'chrome', label: 'Google Chrome' },
     { id: 'fingerprint', label: 'Fingerprint Chromium' },
@@ -493,6 +513,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         prefs: draft.prefs,
         totp: draft.totpSecret.trim() ? { secret: draft.totpSecret.trim() } : null,
         proxy,
+        fallback: draft.fallback,
         fingerprint: draft.fingerprint,
       });
       onSaved();
@@ -521,6 +542,11 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     ['Proxy', draft.proxyMode === 'saved'
       ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
       : draft.hostPort || 'Direct'],
+    ['Fallback', draft.fallback?.mode === 'direct'
+      ? 'Direct connection'
+      : draft.fallback?.mode === 'proxy'
+        ? (fallbackProxy ? `${countryFlag(fallbackProxy.location?.countryCode)} ${fallbackProxy.name}`.trim() : 'fallback proxy')
+        : '—'],
   ];
 
   const general = (

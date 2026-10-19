@@ -11,7 +11,7 @@ const { spawn, execFile } = require('node:child_process');
 const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
-const { startRelay, checkProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
+const { startRelay, checkProxy, probeProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
 const { parseProxyString } = require('./proxy-parse');
 const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
@@ -341,15 +341,40 @@ function snapshotTabs(id, entry) {
   }).catch(() => {});
 }
 
+function notifyNotice(text, level = 'warning') {
+  if (win && !win.isDestroyed()) win.webContents.send('profiles:notice', { text, level });
+}
+
+// When a profile has a fallback configured, look at the primary proxy first. A dead proxy would
+// otherwise leave the browser without a connection.
+async function chooseProxy(profile) {
+  if (!profile.proxy) return { proxy: null, fallback: null };
+  const mode = profile.fallback?.mode || 'none';
+  if (mode === 'none') return { proxy: profile.proxy, fallback: null };
+
+  const reachable = await probeProxy(profile.proxy, 6000);
+  if (reachable) return { proxy: profile.proxy, fallback: null };
+
+  if (mode === 'direct') {
+    notifyNotice(`Proxy for “${profile.name}” is unreachable — using a direct connection.`);
+    return { proxy: null, fallback: 'direct' };
+  }
+  if (mode === 'proxy' && profile.fallback.proxy) {
+    notifyNotice(`Proxy for “${profile.name}” is unreachable — using its fallback proxy.`);
+    return { proxy: profile.fallback.proxy, fallback: 'proxy' };
+  }
+  return { proxy: profile.proxy, fallback: null };
+}
+
 // Firefox has no DevTools protocol: cookies go through WebDriver BiDi and everything else is a
 // profile preference. The process is treated like Chromium once it is running.
-async function launchFirefoxProfile(id, profile, executable) {
+async function launchFirefoxProfile(id, profile, executable, proxy) {
   const kernel = 'firefox';
-  const geo = profile.fingerprint && needsGeo(profile) && profile.proxy ? await lookupGeo(profile.proxy) : null;
+  const geo = profile.fingerprint && needsGeo(profile) && proxy ? await lookupGeo(proxy) : null;
   const versions = await kernels.listVersions('firefox').catch(() => []);
   const version = profile.browserVersion || versions[0] || '128.0';
   const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo });
-  const relay = profile.proxy ? await startRelay(profile.proxy) : null;
+  const relay = proxy ? await startRelay(proxy) : null;
 
   try {
     const dir = profileDir(id);
@@ -431,9 +456,15 @@ async function launchProfile(id) {
     const customPath = profile.executablePath;
     if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
     if (kernel === 'firefox') {
-      if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
+      const chosen = await chooseProxy(profile);
+      if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
       const firefoxVersion = profile.browserVersion || (await kernels.listVersions('firefox'))[0];
-      await launchFirefoxProfile(id, profile, customPath || await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion)));
+      await launchFirefoxProfile(
+        id,
+        profile,
+        customPath || await trackDownload('firefox', firefoxVersion, () => kernels.ensureBrowser('firefox', firefoxVersion)),
+        chosen.proxy,
+      );
       return;
     }
     if (native && !profile.browserVersion) throw new Error('Pick a fingerprint build for this profile first.');
@@ -445,11 +476,12 @@ async function launchProfile(id) {
           : await trackDownload(kernel, 'latest', () => kernels.ensureBrowser(kernel, 'latest')));
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
-    if (profile.changeIpUrl) await callChangeIp(profile.changeIpUrl);
+    const chosen = await chooseProxy(profile);
+    if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
 
     // "Based on IP" needs the exit IP's timezone and country; a failed lookup falls back to the
     // real system values instead of blocking the launch.
-    const geo = needsGeo(profile) && profile.proxy ? await lookupGeo(profile.proxy) : null;
+    const geo = needsGeo(profile) && chosen.proxy ? await lookupGeo(chosen.proxy) : null;
     const resolved = resolveFingerprint(profile.fingerprint, {
       os: profile.os,
       major: profile.browserVersion,
@@ -494,7 +526,7 @@ async function launchProfile(id) {
 
     fs.mkdirSync(profileDir(id), { recursive: true });
     applyProfilePrefs(profileDir(id), profile.prefs);
-    relay = profile.proxy ? await startRelay(profile.proxy) : null;
+    relay = chosen.proxy ? await startRelay(chosen.proxy) : null;
 
     const emulation = {
       timezone: native ? null : resolved.timezone,

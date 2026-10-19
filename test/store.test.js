@@ -409,3 +409,21 @@ test('saved proxies keep the checked location', () => {
   assert.equal(bulk.length, 2);
   assert.equal(store.listProxies().length, 4);
 });
+
+test('a profile can carry a fallback proxy or a direct fallback', () => {
+  const store = createStore(tmpDir());
+  const direct = store.saveProfile({ name: 'Direct fallback', fallback: { mode: 'direct' } });
+  assert.deepEqual(store.getProfile(direct.id).fallback, { mode: 'direct', proxy: null });
+
+  const saved = store.saveProxy({ name: 'DE', type: 'http', host: 'de.example', port: 8000 });
+  const withProxy = store.saveProfile({
+    name: 'Proxy fallback',
+    fallback: { mode: 'proxy', proxy: { type: saved.type, host: saved.host, port: saved.port } },
+  });
+  assert.equal(store.getProfile(withProxy.id).fallback.mode, 'proxy');
+  assert.equal(store.getProfile(withProxy.id).fallback.proxy.host, 'de.example');
+
+  assert.throws(() => store.saveProfile({ name: 'Bad', fallback: { mode: 'proxy' } }), /fallback proxy/);
+  assert.throws(() => store.saveProfile({ name: 'Bad', fallback: { mode: 'sometimes' } }), /fallback mode/);
+  assert.deepEqual(store.getProfile(direct.id).fallback, { mode: 'direct', proxy: null });
+});
