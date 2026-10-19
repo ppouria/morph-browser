@@ -1,7 +1,7 @@
 {
   "name": "morph-browser",
-  "version": "0.2.0",
-  "description": "Morph Browser \u2014 run isolated browser profiles with their own data, proxy and fingerprint",
+  "version": "0.1.0",
+  "description": "Morph Browser — run isolated browser profiles with their own data, proxy and fingerprint",
   "private": true,
   "main": "src/main.js",
   "scripts": {
