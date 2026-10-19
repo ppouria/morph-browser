@@ -237,6 +237,7 @@
 .pm-select[aria-expanded="true"] .chev { transform: rotate(180deg); color: var(--text); }
 
 .pm-menu {
+  overscroll-behavior: contain;
   position: fixed;
   z-index: 1200;
   padding: 6px;

@@ -70,6 +70,20 @@ function PmSelect({ value, options, onChange, placeholder = 'Select…' }) {
 
   useLayoutEffect(() => { if (open) place(); }, [open]);
 
+  // Wheel over the menu belongs to the menu: without this the dialog behind it scrolls and the
+  // outside-scroll handler closes the dropdown while the user is still reading it.
+  useEffect(() => {
+    if (!open) return undefined;
+    const menu = menuRef.current;
+    if (!menu) return undefined;
+    const onWheel = (event) => {
+      event.preventDefault();
+      menu.scrollTop += event.deltaY;
+    };
+    menu.addEventListener('wheel', onWheel, { passive: false });
+    return () => menu.removeEventListener('wheel', onWheel);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onDown = (event) => {
@@ -78,7 +92,11 @@ function PmSelect({ value, options, onChange, placeholder = 'Select…' }) {
       setOpen(false);
     };
     const onKey = (event) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } };
-    const onScroll = () => setOpen(false);
+    // Scrolling inside the menu itself must not close it; scrolling the dialog behind it should.
+    const onScroll = (event) => {
+      if (menuRef.current && menuRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', place);
