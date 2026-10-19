@@ -311,6 +311,7 @@ function withDefaults(profile) {
     prefs: normalizePrefs(profile.prefs),
     launchArgs: profile.launchArgs || '',
     totp: profile.totp || null,
+    number: Number.isInteger(profile.number) && profile.number > 0 ? profile.number : null,
     lastOpenedAt: profile.lastOpenedAt || null,
     lastTabs: Array.isArray(profile.lastTabs) ? profile.lastTabs.slice(0, 30) : [],
     deletedAt: profile.deletedAt || null,
@@ -328,14 +329,31 @@ function createStore(dir) {
     try {
       parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (err) {
-      if (err.code === 'ENOENT') return { profiles: [], proxies: [], settings: { ...DEFAULT_SETTINGS } };
+      if (err.code === 'ENOENT') {
+        return { profiles: [], proxies: [], settings: { ...DEFAULT_SETTINGS }, nextNumber: 1 };
+      }
       throw err;
     }
-    return {
+    const data = {
       profiles: (parsed.profiles || []).map(withDefaults),
       proxies: parsed.proxies || [],
       settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+      nextNumber: Number.isInteger(parsed.nextNumber) ? parsed.nextNumber : 0,
     };
+
+    // Profiles created before the numeric id existed get one, in creation order.
+    let highest = 0;
+    for (const profile of data.profiles) highest = Math.max(highest, profile.number || 0);
+    data.nextNumber = Math.max(data.nextNumber, highest + 1);
+    let numbered = false;
+    for (const profile of data.profiles) {
+      if (!profile.number) {
+        profile.number = data.nextNumber++;
+        numbered = true;
+      }
+    }
+    if (numbered) save(data);
+    return data;
   }
 
   function save(data) {
@@ -344,10 +362,11 @@ function createStore(dir) {
     fs.renameSync(`${file}.tmp`, file);
   }
 
-  function toProfile(input, existing) {
+  function toProfile(input, existing, data) {
     const now = new Date().toISOString();
     return {
       id: existing ? existing.id : `p_${crypto.randomBytes(4).toString('hex')}`,
+      number: existing ? existing.number : data.nextNumber++,
       name: requireText(input.name, 'profile name', 100),
       group: String(input.group || '').trim().slice(0, 60),
       tags: normalizeTags(input.tags),
@@ -389,7 +408,7 @@ function createStore(dir) {
     saveProfile(input) {
       const data = load();
       const existing = input.id ? data.profiles.find((p) => p.id === input.id) : null;
-      const profile = toProfile(input, existing);
+      const profile = toProfile(input, existing, data);
       if (existing) data.profiles[data.profiles.indexOf(existing)] = profile;
       else data.profiles.push(profile);
       save(data);
@@ -428,6 +447,7 @@ function createStore(dir) {
       const copy = {
         ...source,
         id: `p_${crypto.randomBytes(4).toString('hex')}`,
+        number: data.nextNumber++,
         name: `${source.name} copy`.slice(0, 100),
         lastOpenedAt: null,
         deletedAt: null,
@@ -470,7 +490,7 @@ function createStore(dir) {
       const data = load();
       const imported = [];
       for (const entry of payload.profiles) {
-        const profile = toProfile(entry, null);
+        const profile = toProfile(entry, null, data);
         data.profiles.push(profile);
         imported.push(profile);
       }

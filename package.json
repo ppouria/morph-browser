@@ -18,7 +18,8 @@
     "files": [
       "src/**/*",
       "package.json",
-      "build/icon.png"
+      "build/icon.png",
+      "build/badges/**"
     ],
     "directories": {
       "output": "dist"

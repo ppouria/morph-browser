@@ -375,6 +375,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
 
   const fp = draft.fingerprint;
   const overview = [
+    ['Profile ID', draft.number ? `#${draft.number}` : 'assigned on save'],
     ['Kernel', (kernels || []).find((kernel) => kernel.id === draft.kernel)?.label || draft.kernel],
     ['Browser', versionLabel(draft.kernel, draft.browserVersion)],
     ['OS', OS_LABELS[draft.os]],

@@ -137,6 +137,7 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       render: (_, profile) => (
         <Space size={8} align="center">
           <img src="./logo.png" alt="" width={28} height={28} style={{ borderRadius: 6, display: 'block', flex: 'none' }} />
+          <span className="profile-number">#{profile.number}</span>
           <Tooltip title={profile.name}>
             <Text strong ellipsis style={{ maxWidth: 118 }}>{profile.name}</Text>
           </Tooltip>
@@ -173,10 +174,10 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       dataIndex: 'proxy',
       width: 150,
       render: (proxy) => (proxy ? (
-        <Space size={6}>
-          <Tag color="geekblue" style={{ marginInlineEnd: 0, textTransform: 'uppercase', fontSize: 10 }}>{proxy.type}</Tag>
-          <Text code style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{proxy.host}:{proxy.port}</Text>
-        </Space>
+        <div className="proxy-cell" title={`${proxy.host}:${proxy.port}`}>
+          <Tag color="geekblue" style={{ marginInlineEnd: 0, textTransform: 'uppercase', fontSize: 10, flex: 'none' }}>{proxy.type}</Tag>
+          <span className="proxy-host">{proxy.host}:{proxy.port}</span>
+        </div>
       ) : <Text type="secondary">Direct</Text>),
     },
     showLast && {

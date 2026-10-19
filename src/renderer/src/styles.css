@@ -31,6 +31,29 @@ body {
   vertical-align: middle;
 }
 
+.profile-number {
+  font-size: 11px;
+  color: #8c8c8c;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.proxy-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.proxy-host {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .profile-details {
   display: flex;
   align-items: center;
@@ -54,4 +77,34 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+}
+
+.sidebar-github {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  opacity: 0.72;
+  cursor: pointer;
+}
+
+.sidebar-github:hover {
+  background: rgba(127, 127, 127, 0.12);
+  opacity: 1;
+}
+
+.sidebar-github .anticon {
+  font-size: 16px;
+}
+
+.sidebar-github.collapsed {
+  justify-content: center;
+  padding-inline: 0;
 }

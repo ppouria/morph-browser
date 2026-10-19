@@ -357,9 +357,23 @@ $('#copy').addEventListener('click', async () => {
 
 run().catch(() => {});
 
-// A profile can open this page with #note=... so the note from the editor is visible immediately.
+// The profile name, its number and its note arrive in the fragment so they never reach a server.
 (() => {
-  const note = new URLSearchParams(location.hash.slice(1)).get('note');
+  const params = new URLSearchParams(location.hash.slice(1));
+  const name = params.get('name');
+  const id = params.get('id');
+
+  if (name) document.title = name;
+
+  const tag = document.getElementById('profile-tag');
+  if (tag) {
+    const parts = [];
+    if (id) parts.push(`Profile #${id}`);
+    if (name) parts.push(name);
+    tag.textContent = parts.join(' · ');
+  }
+
+  const note = params.get('note');
   if (!note) return;
   const card = document.createElement('article');
   card.className = 'card note-card';

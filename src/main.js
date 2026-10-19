@@ -7,8 +7,8 @@ const crypto = require('node:crypto');
 // Some networks advertise IPv6 but cannot route it, which makes downloads hang. Prefer IPv4 for
 // every lookup the process makes.
 dns.setDefaultResultOrder('ipv4first');
-const { spawn } = require('node:child_process');
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { spawn, execFile } = require('node:child_process');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
 const { startRelay, checkProxy, lookupGeo } = require('./proxy');
@@ -187,11 +187,64 @@ function splitLaunchArgs(text) {
   return args;
 }
 
-// The note travels in the fragment: it is visible on the start page but never sent to a server.
-function noteUrl(profile) {
+// The profile name, its number and the note travel in the fragment: they are shown on the start
+// page but never sent to a server.
+function checkUrl(profile) {
   const base = checkServer ? checkServer.url : '';
   if (!base) return '';
-  return profile.notes ? `${base}#note=${encodeURIComponent(profile.notes)}` : base;
+  const params = new URLSearchParams();
+  if (profile.name) params.set('name', profile.name);
+  if (profile.number) params.set('id', String(profile.number));
+  if (profile.notes) params.set('note', profile.notes);
+  const fragment = params.toString();
+  return fragment ? `${base}#${fragment}` : base;
+}
+
+// Linux matches a window to a desktop entry by class/app id, so a hidden entry with a numbered
+// icon is how the dock shows which profile a browser window belongs to.
+function ensureProfileWindowIcon(profile, executable) {
+  if (process.platform !== 'linux') return null;
+  const number = Number.isInteger(profile.number) && profile.number > 0 && profile.number <= 99 ? profile.number : null;
+  if (!number) return null;
+  const source = path.join(__dirname, '..', 'build', 'badges', `${number}.png`);
+  if (!fs.existsSync(source)) return null;
+  try {
+    const cls = `morph-p${number}`;
+    // An icon name in the hicolor theme is found by every desktop, unlike a path inside the app.
+    const themeDir = path.join(app.getPath('home'), '.local', 'share', 'icons', 'hicolor', '256x256', 'apps');
+    fs.mkdirSync(themeDir, { recursive: true });
+    const icon = path.join(themeDir, `${cls}.png`);
+    if (!fs.existsSync(icon)) fs.copyFileSync(source, icon);
+
+    const dir = path.join(app.getPath('home'), '.local', 'share', 'applications');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${cls}.desktop`);
+    const content = [
+      '[Desktop Entry]',
+      'Type=Application',
+      `Name=Morph Browser #${number}`,
+      'NoDisplay=true',
+      `Exec="${executable}" %U`,
+      `Icon=${cls}`,
+      `StartupWMClass=${cls}`,
+      'Terminal=false',
+      'Categories=Utility;',
+      '',
+    ].join('\n');
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== content) fs.writeFileSync(file, content);
+    execFile('gtk-update-icon-cache', ['-f', '-t', path.join(app.getPath('home'), '.local', 'share', 'icons', 'hicolor')], () => {});
+    return cls;
+  } catch (err) {
+    console.error('profile icon:', err.message);
+    return null;
+  }
+}
+
+function removeProfileWindowIcon(profile) {
+  if (process.platform !== 'linux' || !profile || !profile.number) return;
+  const cls = `morph-p${profile.number}`;
+  fs.rmSync(path.join(app.getPath('home'), '.local', 'share', 'applications', `${cls}.desktop`), { force: true });
+  fs.rmSync(path.join(app.getPath('home'), '.local', 'share', 'icons', 'hicolor', '256x256', 'apps', `${cls}.png`), { force: true });
 }
 
 function isCheckUrl(url) {
@@ -249,7 +302,7 @@ async function launchFirefoxProfile(id, profile, executable) {
 
     const startUrls = [];
     if (store.getSettings().openCheckPage !== false && checkServer) {
-      startUrls.push(noteUrl(profile));
+      startUrls.push(checkUrl(profile));
     }
     startUrls.push(...profile.startUrls);
 
@@ -356,6 +409,9 @@ async function launchProfile(id) {
     if (profile.prefs.blockImages) preferenceFlags.push('--blink-settings=imagesEnabled=false');
     if (profile.prefs.restorePages === false) preferenceFlags.push('--hide-crash-restore-bubble');
 
+    const windowClass = ensureProfileWindowIcon(profile, executable);
+    const classFlags = windowClass ? [`--class=${windowClass}`] : [];
+
     const kernelFlags = native
       ? buildKernelFlags({
         fingerprint: profile.fingerprint,
@@ -395,14 +451,14 @@ async function launchProfile(id) {
       acceptLanguages: native ? null : acceptLanguages,
       windowSize: resolved.screen,
       webRtcFlags: native ? [] : flagsFor(profile.fingerprint),
-      extraFlags: [...preferenceFlags, ...kernelFlags, ...splitLaunchArgs(profile.launchArgs)],
+      extraFlags: [...preferenceFlags, ...kernelFlags, ...classFlags, ...splitLaunchArgs(profile.launchArgs)],
       env: !native && resolved.timezone ? { TZ: resolved.timezone } : {},
     };
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can
     // reach are visible right after launch.
     const startUrls = [];
     if (store.getSettings().openCheckPage !== false && checkServer) {
-      startUrls.push(noteUrl(profile));
+      startUrls.push(checkUrl(profile));
     }
     for (const url of profile.startUrls) {
       if (!startUrls.includes(url)) startUrls.push(url);
@@ -498,8 +554,10 @@ function setupIpc() {
     if (running.has(id)) throw new Error('stop the profile before deleting it');
     // Only ids the store knows reach the rm below, so a crafted id cannot point it at another folder.
     if (!store.getProfile(id)) throw new Error('profile not found');
+    const profile = store.getProfile(id);
     store.purgeProfile(id);
     fs.rmSync(profileDir(id), { recursive: true, force: true });
+    removeProfileWindowIcon(profile);
     notify();
   });
 
@@ -520,8 +578,10 @@ function setupIpc() {
   ipcMain.handle('profiles:purge', (_e, id) => {
     if (running.has(id)) throw new Error('stop the profile before deleting it');
     if (!store.getProfile(id)) throw new Error('profile not found');
+    const profile = store.getProfile(id);
     store.purgeProfile(id);
     fs.rmSync(profileDir(id), { recursive: true, force: true });
+    removeProfileWindowIcon(profile);
     notify();
   });
 
@@ -620,6 +680,13 @@ function setupIpc() {
     return { ...settings, detected, dataDir: app.getPath('userData') };
   });
   ipcMain.handle('settings:set', (_e, patch) => store.setSettings(patch));
+
+  ipcMain.handle('shell:open-external', (_e, url) => {
+    // Only the project page can be opened, so a compromised page cannot launch arbitrary URLs.
+    const target = String(url || '');
+    if (!target.startsWith('https://github.com/ppouria/morph-browser')) throw new Error('blocked URL');
+    return shell.openExternal(target);
+  });
 }
 
 function createWindow() {

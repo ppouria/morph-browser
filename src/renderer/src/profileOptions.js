@@ -142,6 +142,7 @@ export function blankFingerprint() {
 export function blankDraft() {
   return {
     name: '',
+    number: null,
     group: '',
     tags: '',
     notes: '',
@@ -172,6 +173,7 @@ export function draftFromProfile(profile) {
   const fp = profile.fingerprint || {};
   return {
     name: profile.name,
+    number: profile.number || null,
     group: profile.group || '',
     tags: (profile.tags || []).join(', '),
     notes: profile.notes || '',

@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   checkProxy: (proxy) => ipcRenderer.invoke('proxy:check', proxy),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   onChange: (callback) => ipcRenderer.on('profiles:changed', () => callback()),
   onBrowserProgress: (callback) => ipcRenderer.on('browsers:progress', (_e, progress) => callback(progress)),
 });

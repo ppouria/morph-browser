@@ -303,3 +303,37 @@ test('opening a profile records the last opened time', () => {
   store.markOpened(p.id);
   assert.ok(store.getProfile(p.id).lastOpenedAt);
 });
+
+test('profiles get sequential numbers and keep them', () => {
+  const store = createStore(tmpDir());
+  const a = store.saveProfile({ name: 'A' });
+  const b = store.saveProfile({ name: 'B' });
+  const c = store.saveProfile({ name: 'C' });
+  assert.deepEqual([a.number, b.number, c.number], [1, 2, 3]);
+
+  const copy = store.duplicateProfile(b.id);
+  assert.equal(copy.number, 4);
+
+  store.trashProfile(c.id);
+  store.purgeProfile(c.id);
+  const d = store.saveProfile({ name: 'D' });
+  assert.equal(d.number, 5, 'numbers are not reused after a purge');
+});
+
+test('older profiles are numbered on load', () => {
+  const dir = tmpDir();
+  const file = path.join(dir, 'store.json');
+  fs.writeFileSync(file, JSON.stringify({
+    profiles: [
+      { id: 'p_one', name: 'Old one' },
+      { id: 'p_two', name: 'Old two' },
+    ],
+    proxies: [],
+    settings: {},
+  }));
+  const store = createStore(dir);
+  const profiles = store.listProfiles();
+  assert.deepEqual(profiles.map((p) => p.number), [1, 2]);
+  const next = store.saveProfile({ name: 'New' });
+  assert.equal(next.number, 3);
+});

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  App as AntApp, ConfigProvider, Layout, Menu, Segmented, Space, Typography, theme,
+  App as AntApp, ConfigProvider, Layout, Menu, Space, Typography, theme,
 } from 'antd';
 import {
-  AppstoreOutlined, ApiOutlined, DeleteOutlined, SettingOutlined,
+  AppstoreOutlined, ApiOutlined, DeleteOutlined, GithubOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import ProfilesPage from './ProfilesPage';
@@ -173,21 +173,17 @@ function Shell() {
               selectedKeys={[page]}
               items={[{ key: 'settings', icon: <SettingOutlined />, label: 'Settings' }]}
               onClick={({ key }) => setPage(key)}
-              style={{ borderInlineEnd: 'none', marginBottom: 10 }}
+              style={{ borderInlineEnd: 'none', marginBottom: 6 }}
             />
-            {siderOpen && (
-              <Segmented
-                block
-                size="small"
-                value={themeMode}
-                onChange={handleTheme}
-                options={[
-                  { value: 'system', label: 'Auto' },
-                  { value: 'light', label: 'Light' },
-                  { value: 'dark', label: 'Dark' },
-                ]}
-              />
-            )}
+            <button
+              type="button"
+              className={`sidebar-github${siderOpen ? '' : ' collapsed'}`}
+              onClick={() => api.openExternal('https://github.com/ppouria/morph-browser').catch(() => {})}
+              title="Project on GitHub"
+            >
+              <GithubOutlined />
+              {siderOpen && <span>GitHub</span>}
+            </button>
           </div>
         </Sider>
 
