@@ -2,11 +2,18 @@ import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, 
 import { createPortal } from 'react-dom';
 import './dialog.css';
 import api from './api';
+import {
+  ApiOutlined, AppleOutlined, BgColorsOutlined, CheckCircleOutlined, ChromeOutlined, ClockCircleOutlined,
+  CodeOutlined, DesktopOutlined, EnvironmentOutlined, ExperimentOutlined, FileTextOutlined, FolderOpenOutlined,
+  FontSizeOutlined, GlobalOutlined, IdcardOutlined, KeyOutlined, LinkOutlined, LinuxOutlined, LockOutlined,
+  SafetyOutlined, SettingOutlined, SyncOutlined, TagsOutlined, ThunderboltOutlined, ToolOutlined, UserOutlined,
+  WindowsOutlined,
+} from '@ant-design/icons';
 import { totpCode, secondsLeft } from './totp';
 import { versionLabel } from './format';
 import {
   CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
-  NOISE_OPTIONS, OS_LABELS, OS_OPTIONS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
+  NOISE_OPTIONS, OS_LABELS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
   TZ_OPTIONS, VENDORS, WEBGL_OPTIONS, WEBGPU_OPTIONS, WEBRTC_OPTIONS,
   blankDraft, draftFromProfile, userAgentFor,
 } from './profileOptions';
@@ -45,6 +52,96 @@ function Chevron() {
 
 // A select whose list is portaled into the dialog, so it inherits the dialog theme and is never
 // clipped by the form's scroll container.
+const KERNEL_ICONS = {
+  chrome: <ChromeOutlined style={{ color: '#4285f4' }} />,
+  cft: <ChromeOutlined style={{ color: '#34a853' }} />,
+  chromium: <ChromeOutlined style={{ color: '#7a869a' }} />,
+  ungoogled: <ChromeOutlined style={{ color: '#0f9d58' }} />,
+  fingerprint: <ChromeOutlined style={{ color: '#fbbc05' }} />,
+  brave: <SafetyOutlined style={{ color: '#fb542b' }} />,
+  thorium: <ExperimentOutlined style={{ color: '#a855f7' }} />,
+  firefox: <GlobalOutlined style={{ color: '#ff7139' }} />,
+};
+
+const FIELD_ICONS = {
+  Name: <UserOutlined />,
+  Group: <TagsOutlined />,
+  Kernel: <ChromeOutlined />,
+  Tags: <TagsOutlined />,
+  Browser: <ChromeOutlined />,
+  OS: <DesktopOutlined />,
+  'User-Agent preset': <GlobalOutlined />,
+  'Custom user-agent': <GlobalOutlined />,
+  Note: <FileTextOutlined />,
+  'Start tabs': <LinkOutlined />,
+  Cookies: <KeyOutlined />,
+  Mode: <ApiOutlined />,
+  'Saved proxy': <LinkOutlined />,
+  Type: <GlobalOutlined />,
+  Username: <UserOutlined />,
+  'Host : Port': <GlobalOutlined />,
+  Password: <LockOutlined />,
+  Check: <CheckCircleOutlined />,
+  'Change IP URL': <SyncOutlined />,
+  Policy: <SafetyOutlined />,
+  Timezone: <ClockCircleOutlined />,
+  Location: <EnvironmentOutlined />,
+  Language: <GlobalOutlined />,
+  'Display language': <GlobalOutlined />,
+  'Screen resolution': <DesktopOutlined />,
+  Fonts: <FontSizeOutlined />,
+  'CPU cores': <ThunderboltOutlined />,
+  'Device memory': <ThunderboltOutlined />,
+  'Hardware noise': <BgColorsOutlined />,
+  'WebGL metadata': <ExperimentOutlined />,
+  WebGPU: <ExperimentOutlined />,
+  'Random fingerprint': <ExperimentOutlined />,
+  Preferences: <SettingOutlined />,
+  'Custom binary': <CodeOutlined />,
+  'Launch arguments': <ToolOutlined />,
+  '2FA secret': <SafetyOutlined />,
+};
+
+const SECTION_ICONS = {
+  Identity: <IdcardOutlined />,
+  Notes: <FileTextOutlined />,
+  Session: <LinkOutlined />,
+  'Proxy source': <ApiOutlined />,
+  WebRTC: <SafetyOutlined />,
+  Locale: <GlobalOutlined />,
+  Display: <DesktopOutlined />,
+  Hardware: <ThunderboltOutlined />,
+  GPU: <ExperimentOutlined />,
+  'Fingerprint stability': <ExperimentOutlined />,
+  Startup: <SettingOutlined />,
+  Storage: <FolderOpenOutlined />,
+};
+
+const OS_CHOICES = [
+  { value: 'windows', label: 'Windows', icon: <WindowsOutlined style={{ color: '#4f9cf0' }} /> },
+  { value: 'macos', label: 'macOS', icon: <AppleOutlined style={{ color: '#b6bcc9' }} /> },
+  { value: 'linux', label: 'Linux', icon: <LinuxOutlined style={{ color: '#f4b400' }} /> },
+];
+
+function OsPicker({ value, onChange }) {
+  return (
+    <div className="pm-os" role="group">
+      {OS_CHOICES.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={value === option.value ? 'active' : ''}
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+        >
+          <span className="pm-os-icon">{option.icon}</span>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PmSelect({ value, options, onChange, placeholder = 'Select…' }) {
   const root = useContext(DialogContext);
   const [open, setOpen] = useState(false);
@@ -121,7 +218,10 @@ function PmSelect({ value, options, onChange, placeholder = 'Select…' }) {
         aria-expanded={open}
         onClick={() => { if (!open) setPos(null); setOpen((current) => !current); }}
       >
-        <span className={`label${selected ? '' : ' muted'}`}>{selected ? selected.label : placeholder}</span>
+        <span className={`label${selected ? '' : ' muted'}`}>
+          {selected && selected.icon ? <span className="pm-opt-icon">{selected.icon}</span> : null}
+          {selected ? selected.label : placeholder}
+        </span>
         <Chevron />
       </button>
       {open && createPortal(
@@ -139,6 +239,7 @@ function PmSelect({ value, options, onChange, placeholder = 'Select…' }) {
               aria-selected={String(option.value) === String(value)}
               onClick={() => { onChange(option.value); setOpen(false); }}
             >
+              {option.icon ? <span className="pm-opt-icon">{option.icon}</span> : null}
               {option.label}
               {option.note ? <span className="note">{option.note}</span> : null}
             </button>
@@ -161,6 +262,7 @@ function Seg({ options, value, onChange }) {
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
         >
+          {option.icon ? <span className="pm-opt-icon">{option.icon}</span> : null}
           {option.label}
         </button>
       ))}
@@ -168,10 +270,13 @@ function Seg({ options, value, onChange }) {
   );
 }
 
-function Field({ label, children, span2 = false, hint }) {
+function Field({ label, icon, children, span2 = false, hint }) {
   return (
     <div className={`pm-field${span2 ? ' pm-span2' : ''}`}>
-      <label>{label}</label>
+      <label>
+        <span className="pm-field-icon">{icon || FIELD_ICONS[label]}</span>
+        {label}
+      </label>
       {children}
       {hint ? <span className="pm-hint">{hint}</span> : null}
     </div>
@@ -247,7 +352,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
   const kernelOptions = useMemo(() => (kernels.length ? kernels : [
     { id: 'chrome', label: 'Google Chrome' },
     { id: 'fingerprint', label: 'Fingerprint Chromium' },
-  ]).map((kernel) => ({ value: kernel.id, label: kernel.label })), [kernels]);
+  ]).map((kernel) => ({ value: kernel.id, label: kernel.label, icon: KERNEL_ICONS[kernel.id] })), [kernels]);
 
   const kernelDescription = useMemo(() => {
     const found = (kernels || []).find((kernel) => kernel.id === draft.kernel);
@@ -408,10 +513,13 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
   const general = (
     <>
       <div className="pm-section">
-        <div className="pm-section-title">Identity</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><IdcardOutlined /></span>Identity</div>
         <div className="pm-grid2">
           <Field label="Name" span2>
-            <input ref={nameRef} className="pm-input" value={draft.name} maxLength={100} onChange={(event) => patch({ name: event.target.value })} placeholder="e.g. shop@proton.me" />
+            <div className="pm-input-wrap">
+              <input ref={nameRef} className="pm-input" value={draft.name} maxLength={100} onChange={(event) => patch({ name: event.target.value })} placeholder="e.g. shop@proton.me" />
+              <span className="pm-count">{draft.name.length}/100</span>
+            </div>
           </Field>
           <Field label="Group">
             <input className="pm-input" value={draft.group} maxLength={60} onChange={(event) => patch({ group: event.target.value })} placeholder="Optional" />
@@ -438,7 +546,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
             <PmSelect value={draft.browserVersion} options={versionOptions} onChange={(value) => patch({ browserVersion: value })} />
           </Field>
           <Field label="OS">
-            <PmSelect value={draft.os} options={OS_OPTIONS} onChange={(value) => patch({ os: value })} />
+            <OsPicker value={draft.os} onChange={(value) => patch({ os: value })} />
           </Field>
           <Field label="User-Agent preset">
             <PmSelect
@@ -454,14 +562,14 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Notes</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><FileTextOutlined /></span>Notes</div>
         <Field label="Note" hint="Shown as an icon in the list and on the profile's start page.">
           <textarea className="pm-textarea" rows={2} maxLength={2000} value={draft.notes} onChange={(event) => patch({ notes: event.target.value })} placeholder="Anything worth remembering about this profile" />
         </Field>
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Session</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><LinkOutlined /></span>Session</div>
         <Field label="Start tabs" hint="One URL per line. They open after launch, once cookies are in place.">
           <textarea className="pm-textarea" rows={3} value={draft.startUrls} onChange={(event) => patch({ startUrls: event.target.value })} spellCheck={false} placeholder="https://example.com" />
         </Field>
@@ -475,13 +583,16 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
   const proxyPane = (
     <>
       <div className="pm-section">
-        <div className="pm-section-title">Proxy source</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><ApiOutlined /></span>Proxy source</div>
         <div className="pm-grid2">
           <Field label="Mode" span2>
             <Seg
               value={draft.proxyMode}
               onChange={(value) => patch({ proxyMode: value })}
-              options={[{ value: 'custom', label: 'Custom' }, { value: 'saved', label: 'Saved proxy' }]}
+              options={[
+                { value: 'custom', label: 'Custom', icon: <ApiOutlined /> },
+                { value: 'saved', label: 'Saved proxy', icon: <LinkOutlined /> },
+              ]}
             />
           </Field>
 
@@ -500,9 +611,9 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
                 <PmSelect
                   value={draft.proxyType}
                   options={[
-                    { value: 'http', label: 'HTTP' },
-                    { value: 'https', label: 'HTTPS' },
-                    { value: 'socks5', label: 'SOCKS5' },
+                    { value: 'http', label: 'HTTP', icon: <GlobalOutlined /> },
+                    { value: 'https', label: 'HTTPS', icon: <LockOutlined /> },
+                    { value: 'socks5', label: 'SOCKS5', icon: <ApiOutlined /> },
                   ]}
                   onChange={(value) => patch({ proxyType: value })}
                 />
@@ -565,7 +676,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
         </div>
       )}
       <div className="pm-section">
-        <div className="pm-section-title">WebRTC</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><SafetyOutlined /></span>WebRTC</div>
         <div className="pm-grid2">
           <Field label="Policy" span2>
             <Seg value={fp.webRtc} options={WEBRTC_OPTIONS} onChange={(value) => patchFp({ webRtc: value })} />
@@ -574,7 +685,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Locale</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><GlobalOutlined /></span>Locale</div>
         <div className="pm-grid2">
           <Field label="Timezone" span2>
             <Seg value={fp.timezone.mode} options={TZ_OPTIONS} onChange={(value) => patchFp({ timezone: { ...fp.timezone, mode: value } })} />
@@ -629,7 +740,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Display</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><DesktopOutlined /></span>Display</div>
         <div className="pm-grid2">
           <Field label="Screen resolution" span2>
             <Seg value={fp.screen.mode} options={SCREEN_OPTIONS} onChange={(value) => patchFp({ screen: { ...fp.screen, mode: value } })} />
@@ -652,7 +763,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Hardware</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><ThunderboltOutlined /></span>Hardware</div>
         <div className="pm-grid2">
           <Field label="CPU cores">
             <PmSelect
@@ -687,7 +798,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">GPU</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><ExperimentOutlined /></span>GPU</div>
         <div className="pm-grid2">
           <Field label="WebGL metadata" span2>
             <Seg value={fp.webgl.mode} options={WEBGL_OPTIONS} onChange={(value) => patchFp({ webgl: { ...fp.webgl, mode: value } })} />
@@ -717,7 +828,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
   const advanced = (
     <>
       <div className="pm-section">
-        <div className="pm-section-title">Fingerprint stability</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><ExperimentOutlined /></span>Fingerprint stability</div>
         <Field label="Random fingerprint" hint="A new noise seed on every launch. Leave it off to keep one stable identity.">
           <label className="pm-check-row">
             <input type="checkbox" checked={fp.randomFingerprint} onChange={(event) => patchFp({ randomFingerprint: event.target.checked })} />
@@ -727,7 +838,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Startup</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><SettingOutlined /></span>Startup</div>
         <Field label="Preferences" span2 hint="Applied to the browser profile before the first page loads.">
           <div className="pm-grid2" style={{ gap: '10px 16px' }}>
             <label className="pm-check-row">
@@ -775,7 +886,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
       </div>
 
       <div className="pm-section">
-        <div className="pm-section-title">Storage</div>
+        <div className="pm-section-title"><span className="pm-section-icon"><FolderOpenOutlined /></span>Storage</div>
         <Field label="Data folder">
           <code className="pm-hint" style={{ wordBreak: 'break-all' }}>
             {profile && settings ? `${settings.dataDir.replace(/[\\/]$/, '')}/profiles/${profile.id}` : 'Available after the first save'}
@@ -812,7 +923,12 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
         </header>
 
         <div className="pm-tabs" role="tablist">
-          {[['general', 'General'], ['proxy', 'Proxy'], ['fingerprint', 'Fingerprint'], ['advanced', 'Advanced']].map(([key, label]) => (
+          {[
+            ['general', 'General', <SettingOutlined />],
+            ['proxy', 'Proxy', <ApiOutlined />],
+            ['fingerprint', 'Fingerprint', <IdcardOutlined />],
+            ['advanced', 'Advanced', <ToolOutlined />],
+          ].map(([key, label, icon]) => (
             <button
               key={key}
               type="button"
@@ -821,6 +937,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               aria-selected={tab === key}
               onClick={() => setTab(key)}
             >
+              <span className="pm-tab-icon">{icon}</span>
               {label}
             </button>
           ))}
