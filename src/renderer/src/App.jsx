@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  App as AntApp, ConfigProvider, Layout, Menu, Space, Typography, theme,
+  App as AntApp, ConfigProvider, Layout, Typography, theme,
 } from 'antd';
 import {
   AppstoreOutlined, ApiOutlined, DeleteOutlined, GithubOutlined, SettingOutlined,
@@ -13,7 +13,7 @@ import TrashPage from './TrashPage';
 import ProfileDialog from './ProfileDialog';
 import ProxyModal from './ProxyModal';
 
-const { Sider, Content } = Layout;
+const { Content } = Layout;
 const { Title, Text } = Typography;
 
 const NAV = [
@@ -116,33 +116,18 @@ function Shell() {
           fontFamily: '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif',
         },
         components: {
-          Layout: { siderBg: isDark ? '#141414' : '#ffffff', bodyBg: isDark ? '#0f0f0f' : '#f5f6f8' },
-          Menu: { itemHeight: 38, itemMarginInline: 8 },
+          Layout: { bodyBg: isDark ? '#0f0f0f' : '#f5f6f8' },
         },
       }}
     >
       <Layout style={{ minHeight: '100vh' }}>
-        <Sider
-          width={228}
-          collapsedWidth={64}
-          collapsed={!siderOpen}
-          trigger={null}
+        <aside
+          className={`app-sider ${isDark ? 'dark' : 'light'}${siderOpen ? '' : ' collapsed'}`}
+          style={{ width: siderOpen ? 228 : 64, boxShadow: siderOpen ? '0 18px 50px rgba(0, 0, 0, 0.28)' : 'none' }}
           onMouseEnter={() => setSiderOpen(true)}
           onMouseLeave={() => setSiderOpen(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            height: '100vh',
-            zIndex: 20,
-            overflow: 'hidden',
-            borderRight: `1px solid ${isDark ? '#262626' : '#f0f0f0'}`,
-            background: isDark ? '#141414' : '#ffffff',
-            transition: 'width 180ms ease, box-shadow 180ms ease',
-            boxShadow: siderOpen ? '0 18px 50px rgba(0, 0, 0, 0.28)' : 'none',
-          }}
         >
-          <div className="app-brand" style={{ justifyContent: siderOpen ? 'flex-start' : 'center', padding: siderOpen ? '18px 20px 14px' : '18px 0 14px' }}>
+          <div className="app-brand">
             <img
               className="app-logo"
               src="./logo.png"
@@ -152,40 +137,49 @@ function Shell() {
               style={{ borderRadius: 8, display: 'block', flex: 'none' }}
             />
             {siderOpen && (
-              <div style={{ lineHeight: 1.25, whiteSpace: 'nowrap' }}>
-                <div style={{ fontWeight: 600, fontSize: 13.5 }}>Morph Browser</div>
-                <Text type="secondary" style={{ fontSize: 11 }}>Local workspace</Text>
+              <div className="app-brand-text">
+                <div className="app-brand-name">Morph Browser</div>
+                <div className="app-brand-sub">Local workspace</div>
               </div>
             )}
           </div>
 
-          <Menu
-            mode="inline"
-            selectedKeys={[page]}
-            items={NAV}
-            onClick={({ key }) => setPage(key)}
-            style={{ borderInlineEnd: 'none' }}
-          />
+          <nav className="side-nav">
+            {NAV.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`side-item${page === item.key ? ' active' : ''}`}
+                onClick={() => setPage(item.key)}
+                title={siderOpen ? undefined : item.label}
+              >
+                <span className="side-icon">{item.icon}</span>
+                {siderOpen && <span className="side-label">{item.label}</span>}
+              </button>
+            ))}
+          </nav>
 
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, borderTop: `1px solid ${isDark ? '#262626' : '#f0f0f0'}` }}>
-            <Menu
-              mode="inline"
-              selectedKeys={[page]}
-              items={[{ key: 'settings', icon: <SettingOutlined />, label: 'Settings' }]}
-              onClick={({ key }) => setPage(key)}
-              style={{ borderInlineEnd: 'none', marginBottom: 6 }}
-            />
+          <div className="side-bottom">
             <button
               type="button"
-              className={`sidebar-github${siderOpen ? '' : ' collapsed'}`}
+              className={`side-item${page === 'settings' ? ' active' : ''}`}
+              onClick={() => setPage('settings')}
+              title={siderOpen ? undefined : 'Settings'}
+            >
+              <span className="side-icon"><SettingOutlined /></span>
+              {siderOpen && <span className="side-label">Settings</span>}
+            </button>
+            <button
+              type="button"
+              className="side-item side-github"
               onClick={() => api.openExternal('https://github.com/ppouria/morph-browser').catch(() => {})}
               title="Project on GitHub"
             >
-              <GithubOutlined />
-              {siderOpen && <span>GitHub</span>}
+              <span className="side-icon"><GithubOutlined /></span>
+              {siderOpen && <span className="side-label">GitHub</span>}
             </button>
           </div>
-        </Sider>
+        </aside>
 
         <Layout style={{ marginLeft: siderOpen ? 228 : 64, minHeight: '100vh', transition: 'margin-left 180ms ease' }}>
           <Content style={{ padding: '24px 28px 40px' }}>
