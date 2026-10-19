@@ -391,9 +391,9 @@ html[data-theme="dark"] {
 }
 
 .side-copy {
-  padding: 2px 12px 0;
   color: var(--sider-muted);
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .side-version-dot {

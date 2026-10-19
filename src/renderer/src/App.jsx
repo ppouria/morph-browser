@@ -303,8 +303,9 @@ function Shell() {
                   >
                     MIT
                   </button>
+                  <span className="side-sep">·</span>
+                  <span className="side-copy">© 2026 ppouria</span>
                 </div>
-                <div className="side-copy">© 2026 ppouria</div>
               </div>
             )}
           </div>
