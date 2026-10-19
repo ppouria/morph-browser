@@ -348,25 +348,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
   const tagSuggestions = useMemo(() => [...new Set(profiles.flatMap((item) => item.tags || []))]
     .sort((a, b) => a.localeCompare(b)), [profiles]);
 
-  const fallbackOptions = useMemo(() => [
-    { value: 'none', label: 'No fallback' },
-    { value: 'direct', label: 'Direct connection' },
-    ...proxies.map((proxy) => ({
-      value: proxy.id,
-      label: `${proxyLocationText(proxy) ? `${proxyLocationText(proxy)} ` : ''}${proxy.name}`,
-      note: `${proxy.host}:${proxy.port}`,
-    })),
-  ], [proxies]);
-
-  const fallbackValue = useMemo(() => {
-    if (!draft.fallback || draft.fallback.mode !== 'proxy' || !draft.fallback.proxy) return draft.fallback?.mode || 'none';
-    const saved = proxies.find((proxy) => proxy.host === draft.fallback.proxy.host
-      && proxy.port === draft.fallback.proxy.port
-      && proxy.type === draft.fallback.proxy.type);
-    return saved ? saved.id : 'none';
-  }, [draft.fallback, proxies]);
-
-  const fallbackProxy = proxies.find((proxy) => proxy.id === fallbackValue);
+  const fallbackSavedProxy = proxies.find((proxy) => proxy.id === draft.fallbackSaved);
 
   const kernelOptions = useMemo(() => (kernels.length ? kernels : [
     { id: 'chrome', label: 'Google Chrome' },
@@ -495,6 +477,35 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         }
       }
 
+      let fallback = { mode: 'none', proxy: null };
+      if (draft.fallbackMode === 'saved') {
+        if (!fallbackSavedProxy) throw new Error('choose a fallback proxy');
+        fallback = {
+          mode: 'proxy',
+          proxy: {
+            type: fallbackSavedProxy.type,
+            host: fallbackSavedProxy.host,
+            port: fallbackSavedProxy.port,
+            username: fallbackSavedProxy.username,
+            password: fallbackSavedProxy.password,
+            location: fallbackSavedProxy.location || null,
+          },
+        };
+      } else if (draft.fallbackMode === 'custom') {
+        if (!draft.fallbackHostPort.trim()) throw new Error('enter a fallback host:port');
+        const parsedFallback = await api.parseProxy(draft.fallbackHostPort, draft.fallbackType);
+        fallback = {
+          mode: 'proxy',
+          proxy: {
+            type: parsedFallback.type,
+            host: parsedFallback.host,
+            port: parsedFallback.port,
+            username: parsedFallback.username || draft.fallbackUser,
+            password: parsedFallback.password || draft.fallbackPass,
+          },
+        };
+      }
+
       await api.saveProfile({
         id: profile ? profile.id : undefined,
         name: draft.name,
@@ -513,7 +524,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         prefs: draft.prefs,
         totp: draft.totpSecret.trim() ? { secret: draft.totpSecret.trim() } : null,
         proxy,
-        fallback: draft.fallback,
+        fallback,
         fingerprint: draft.fingerprint,
       });
       onSaved();
@@ -542,10 +553,10 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     ['Proxy', draft.proxyMode === 'saved'
       ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
       : draft.hostPort || 'Direct'],
-    ['Fallback', draft.fallback?.mode === 'direct'
-      ? 'Direct connection'
-      : draft.fallback?.mode === 'proxy'
-        ? (fallbackProxy ? `${countryFlag(fallbackProxy.location?.countryCode)} ${fallbackProxy.name}`.trim() : 'fallback proxy')
+    ['Fallback', draft.fallbackMode === 'saved'
+      ? (fallbackSavedProxy ? `${countryFlag(fallbackSavedProxy.location?.countryCode)} ${fallbackSavedProxy.name}`.trim() : 'choose one')
+      : draft.fallbackMode === 'custom'
+        ? draft.fallbackHostPort || 'custom proxy'
         : '—'],
   ];
 
@@ -707,6 +718,85 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
           <Field label="Change IP URL" span2 hint="Called before every launch. A non-2xx answer stops the launch.">
             <input className="pm-input" value={draft.changeIpUrl} onChange={(event) => patch({ changeIpUrl: event.target.value })} spellCheck={false} placeholder="https://provider.example/rotate?key=…" />
           </Field>
+        </div>
+      </div>
+
+      <div className="pm-section">
+        <div className="pm-section-title"><span className="pm-section-icon"><SafetyOutlined /></span>Fallback proxy</div>
+        <div className="pm-grid2">
+          <Field
+            label="Mode"
+            span2
+            hint="When the main proxy is unreachable at launch, the browser uses this proxy instead. No fallback means the launch keeps the main proxy."
+          >
+            <Seg
+              value={draft.fallbackMode}
+              onChange={(value) => patch({ fallbackMode: value })}
+              options={[
+                { value: 'none', label: 'None', icon: <SafetyOutlined /> },
+                { value: 'saved', label: 'Saved proxy', icon: <LinkOutlined /> },
+                { value: 'custom', label: 'Custom proxy', icon: <ApiOutlined /> },
+              ]}
+            />
+          </Field>
+
+          {draft.fallbackMode === 'saved' && (
+            <Field
+              label="Fallback proxy"
+              span2
+              hint={fallbackSavedProxy?.location
+                ? `${countryFlag(fallbackSavedProxy.location.countryCode)} ${fallbackSavedProxy.location.country || fallbackSavedProxy.location.countryCode}${fallbackSavedProxy.location.city ? ` · ${fallbackSavedProxy.location.city}` : ''}`
+                : undefined}
+            >
+              <PmSelect
+                value={draft.fallbackSaved}
+                options={proxies.map((proxy) => ({
+                  value: proxy.id,
+                  label: `${proxyLocationText(proxy) ? `${proxyLocationText(proxy)} ` : ''}${proxy.name}`,
+                  note: `${proxy.host}:${proxy.port}`,
+                }))}
+                onChange={(value) => patch({ fallbackSaved: value })}
+                placeholder="Choose a saved proxy"
+              />
+            </Field>
+          )}
+
+          {draft.fallbackMode === 'custom' && (
+            <>
+              <Field label="Type">
+                <PmSelect
+                  value={draft.fallbackType}
+                  options={[
+                    { value: 'http', label: 'HTTP', icon: <GlobalOutlined /> },
+                    { value: 'https', label: 'HTTPS', icon: <LockOutlined /> },
+                    { value: 'socks5', label: 'SOCKS5', icon: <ApiOutlined /> },
+                  ]}
+                  onChange={(value) => patch({ fallbackType: value })}
+                />
+              </Field>
+              <Field label="Username">
+                <input className="pm-input" value={draft.fallbackUser} onChange={(event) => patch({ fallbackUser: event.target.value })} spellCheck={false} />
+              </Field>
+              <Field label="Host : Port" span2 hint="Same provider formats as the main proxy.">
+                <input
+                  className="pm-input"
+                  value={draft.fallbackHostPort}
+                  onChange={(event) => patch({ fallbackHostPort: event.target.value })}
+                  spellCheck={false}
+                  placeholder="host:port or host:port:user:pass"
+                />
+              </Field>
+              <Field label="Password">
+                <input
+                  className="pm-input"
+                  type="password"
+                  value={draft.fallbackPass}
+                  onChange={(event) => patch({ fallbackPass: event.target.value })}
+                  autoComplete="new-password"
+                />
+              </Field>
+            </>
+          )}
         </div>
       </div>
     </>
