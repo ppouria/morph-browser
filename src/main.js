@@ -928,7 +928,8 @@ function setupIpc() {
   ipcMain.handle('shell:open-external', (_e, url) => {
     // Only the project page can be opened, so a compromised page cannot launch arbitrary URLs.
     const target = String(url || '');
-    if (!target.startsWith('https://github.com/ppouria/morph-browser')) throw new Error('blocked URL');
+    const allowed = ['https://github.com/ppouria/morph-browser', 'https://opensource.org/license/mit'];
+    if (!allowed.some((prefix) => target.startsWith(prefix))) throw new Error('blocked URL');
     return shell.openExternal(target);
   });
 }

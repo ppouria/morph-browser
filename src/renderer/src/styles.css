@@ -340,13 +340,22 @@ html[data-theme="dark"] {
   text-align: center;
 }
 
+.side-meta {
+  margin-top: 6px;
+}
+
+.side-version-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 0;
+}
+
 .side-version {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  margin-top: 6px;
-  padding: 4px 12px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--sider-muted);
@@ -358,6 +367,33 @@ html[data-theme="dark"] {
 
 .side-version:hover {
   color: var(--sider-text);
+}
+
+.side-sep {
+  color: var(--sider-muted);
+  font-size: 11px;
+}
+
+.side-license {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sider-text);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.side-license:hover {
+  color: var(--nav-active-text);
+}
+
+.side-copy {
+  padding: 2px 12px 0;
+  color: var(--sider-muted);
+  font-size: 10.5px;
 }
 
 .side-version-dot {

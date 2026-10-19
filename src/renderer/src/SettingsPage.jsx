@@ -428,6 +428,17 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
             <Descriptions.Item label="Version">{info ? info.version : '—'}</Descriptions.Item>
             <Descriptions.Item label="Electron">{info ? info.electron : '—'}</Descriptions.Item>
             <Descriptions.Item label="Platform">{info ? info.platform : '—'}</Descriptions.Item>
+            <Descriptions.Item label="License">
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                onClick={() => api.openExternal('https://opensource.org/license/mit').catch((err) => notify.error(err.message))}
+              >
+                MIT
+              </Button>
+            </Descriptions.Item>
+            <Descriptions.Item label="Copyright">© 2026 ppouria</Descriptions.Item>
           </Descriptions>
           <Divider style={{ margin: '10px 0' }} />
           <Button icon={<GithubOutlined />} onClick={() => api.openExternal('https://github.com/ppouria/morph-browser').catch(() => {})}>

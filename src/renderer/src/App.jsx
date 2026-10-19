@@ -279,19 +279,33 @@ function Shell() {
               {siderOpen && <span className="side-label">GitHub</span>}
             </button>
             {siderOpen && (
-              <button
-                type="button"
-                className="side-version"
-                onClick={() => setPage('settings')}
-                title={update && ['available', 'downloading', 'downloaded'].includes(update.status)
-                  ? 'An update is available'
-                  : 'Version'}
-              >
-                v{version || '—'}
-                {update && ['available', 'downloading', 'downloaded'].includes(update.status) && (
-                  <span className="side-version-dot" />
-                )}
-              </button>
+              <div className="side-meta">
+                <div className="side-version-line">
+                  <button
+                    type="button"
+                    className="side-version"
+                    onClick={() => setPage('settings')}
+                    title={update && ['available', 'downloading', 'downloaded'].includes(update.status)
+                      ? 'An update is available'
+                      : 'Version'}
+                  >
+                    v{version || '—'}
+                    {update && ['available', 'downloading', 'downloaded'].includes(update.status) && (
+                      <span className="side-version-dot" />
+                    )}
+                  </button>
+                  <span className="side-sep">·</span>
+                  <button
+                    type="button"
+                    className="side-license"
+                    title="MIT License"
+                    onClick={() => api.openExternal('https://opensource.org/license/mit').catch(() => {})}
+                  >
+                    MIT
+                  </button>
+                </div>
+                <div className="side-copy">© 2026 ppouria</div>
+              </div>
             )}
           </div>
         </aside>
