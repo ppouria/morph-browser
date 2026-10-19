@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from './api';
-import { chromeLabel, groupOptions } from './format';
+import { chromeLabel, countryFlag, groupOptions } from './format';
 
 const { Text } = Typography;
 
@@ -127,10 +127,11 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     }
   };
 
-  const showDetails = viewport.width >= 720;
-  const showProxy = viewport.width >= 1000;
-  const showLast = viewport.width >= 1140;
-  const showStatus = viewport.width >= 860;
+  const showVersion = viewport.width >= 860;
+  const showDetails = viewport.width >= 1000;
+  const showProxy = viewport.width >= 1160;
+  const showLast = viewport.width >= 1440;
+  const showStatus = viewport.width >= 900;
   const rowHeight = density === 'small' ? 46 : 55;
   const pageSize = Math.max(4, Math.floor((viewport.height - 380) / rowHeight));
 
@@ -154,6 +155,12 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
         </Space>
       ),
     },
+    showVersion && {
+      title: 'Version',
+      key: 'version',
+      width: 120,
+      render: (_, profile) => <Text style={{ whiteSpace: 'nowrap' }}>{chromeLabel(profile)}</Text>,
+    },
     showDetails && {
       title: 'Details',
       key: 'details',
@@ -161,7 +168,7 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
       render: (_, profile) => {
         // A tag that repeats the group name would show the same word twice.
         const tags = (profile.tags || []).filter((tag) => tag !== profile.group);
-        const summary = [profile.group, ...tags, chromeLabel(profile), profile.totp ? '2FA' : null]
+        const summary = [profile.group, ...tags, profile.totp ? '2FA' : null]
           .filter(Boolean)
           .join(' · ');
         return (
@@ -170,7 +177,6 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
               {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
               {tags.slice(0, 2).map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
               {tags.length > 2 && <Tag bordered={false}>+{tags.length - 2}</Tag>}
-              <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
               {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
               {profile.startUrls.length > 0 && (
                 <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
@@ -185,11 +191,18 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     showProxy && {
       title: 'Proxy',
       dataIndex: 'proxy',
-      width: 150,
+      width: 240,
       render: (proxy) => (proxy ? (
-        <div className="proxy-cell" title={`${proxy.host}:${proxy.port}`}>
+        <div
+          className="proxy-cell"
+          title={`${proxy.host}:${proxy.port}${proxy.location?.countryCode ? ` · ${proxy.location.country || ''}${proxy.location.city ? ` / ${proxy.location.city}` : ''}${proxy.location.ip ? ` · ${proxy.location.ip}` : ''}` : ''}`}
+        >
+          {proxy.location?.countryCode && (
+            <span className="proxy-flag">{countryFlag(proxy.location.countryCode)}</span>
+          )}
           <Tag color="geekblue" style={{ marginInlineEnd: 0, textTransform: 'uppercase', fontSize: 10, flex: 'none' }}>{proxy.type}</Tag>
           <span className="proxy-host">{proxy.host}:{proxy.port}</span>
+          {proxy.location?.countryCode && <span className="proxy-country">{proxy.location.countryCode}</span>}
         </div>
       ) : <Text type="secondary">Direct</Text>),
     },

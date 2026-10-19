@@ -11,7 +11,7 @@ import {
   WindowsOutlined,
 } from '@ant-design/icons';
 import { totpCode, secondsLeft } from './totp';
-import { versionLabel } from './format';
+import { countryFlag, proxyLocationText, versionLabel } from './format';
 import { KERNEL_ICONS } from './kernelIcons';
 import {
   CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
@@ -372,9 +372,11 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     ...builds.slice(0, 8).map(({ major }) => ({ value: major, label: `${versionLabel(draft.kernel, major)} on ${OS_LABELS[draft.os]}` })),
   ], [builds, draft.os]);
 
+  const selectedSavedProxy = proxies.find((proxy) => proxy.id === draft.savedProxy);
+
   const savedProxyOptions = proxies.map((proxy) => ({
     value: proxy.id,
-    label: proxy.name,
+    label: `${proxyLocationText(proxy) ? `${proxyLocationText(proxy)} ` : ''}${proxy.name}`,
     note: `${proxy.host}:${proxy.port}`,
   }));
 
@@ -403,7 +405,9 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         username: parsed.username || draft.proxyUser,
         password: parsed.password || draft.proxyPass,
       });
-      setCheck({ ok: true, text: `Exit IP ${result.ip}` });
+      const location = result.location || null;
+      const place = location ? ` · ${countryFlag(location.countryCode)} ${location.country || location.countryCode}` : '';
+      setCheck({ ok: true, text: `Exit IP ${result.ip}${place}`, location });
     } catch (err) {
       setCheck({ ok: false, text: errorText(err) });
     }
@@ -438,7 +442,16 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       let proxy = null;
       if (draft.proxyMode === 'saved') {
         const saved = proxies.find((item) => item.id === draft.savedProxy);
-        if (saved) proxy = { type: saved.type, host: saved.host, port: saved.port, username: saved.username, password: saved.password };
+        if (saved) {
+          proxy = {
+            type: saved.type,
+            host: saved.host,
+            port: saved.port,
+            username: saved.username,
+            password: saved.password,
+            location: saved.location || null,
+          };
+        }
       } else if (draft.hostPort.trim()) {
         const parsed = await api.parseProxy(draft.hostPort, draft.proxyType);
         proxy = {
@@ -447,6 +460,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
           port: parsed.port,
           username: parsed.username || draft.proxyUser,
           password: parsed.password || draft.proxyPass,
+          location: check && check.location ? check.location : null,
         };
       }
 
@@ -607,7 +621,13 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
           </Field>
 
           {draft.proxyMode === 'saved' ? (
-            <Field label="Saved proxy" span2>
+            <Field
+              label="Saved proxy"
+              span2
+              hint={selectedSavedProxy?.location
+                ? `${countryFlag(selectedSavedProxy.location.countryCode)} ${selectedSavedProxy.location.country || selectedSavedProxy.location.countryCode}${selectedSavedProxy.location.city ? ` · ${selectedSavedProxy.location.city}` : ''}${selectedSavedProxy.location.ip ? ` · ${selectedSavedProxy.location.ip}` : ''}`
+                : undefined}
+            >
               <PmSelect
                 value={draft.savedProxy}
                 options={savedProxyOptions}

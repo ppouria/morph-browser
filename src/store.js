@@ -80,6 +80,19 @@ function clampNumber(value, min, max, fallback, round = true) {
   return round ? Math.round(clamped) : clamped;
 }
 
+function normalizeProxyLocation(location) {
+  if (!location) return null;
+  const countryCode = String(location.countryCode || '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) return null;
+  return {
+    ip: location.ip ? String(location.ip) : null,
+    country: location.country ? String(location.country) : null,
+    countryCode,
+    city: location.city ? String(location.city) : null,
+    checkedAt: Number(location.checkedAt) || Date.now(),
+  };
+}
+
 // Input from the renderer is untrusted, so everything is validated here before it is stored.
 function normalizeProxy(proxy) {
   if (!proxy || !proxy.host) return null;
@@ -92,6 +105,7 @@ function normalizeProxy(proxy) {
     port,
     username: String(proxy.username || ''),
     password: String(proxy.password || ''),
+    location: normalizeProxyLocation(proxy.location),
   };
 }
 
@@ -553,6 +567,7 @@ function createStore(dir) {
         id: existing ? existing.id : `x_${crypto.randomBytes(4).toString('hex')}`,
         name: requireText(input.name, 'proxy name', 100),
         ...proxy,
+        location: normalizeProxyLocation(input.location),
       };
       if (existing) {
         data.proxies[data.proxies.indexOf(existing)] = entry;
@@ -561,6 +576,26 @@ function createStore(dir) {
       }
       save(data);
       return entry;
+    },
+
+    // Bulk import writes the file once, not once per proxy.
+    saveProxies(inputs) {
+      const data = load();
+      const imported = [];
+      for (const input of inputs) {
+        const proxy = normalizeProxy(input);
+        if (!proxy) continue;
+        const entry = {
+          id: `x_${crypto.randomBytes(4).toString('hex')}`,
+          name: requireText(input.name, 'proxy name', 100),
+          ...proxy,
+          location: normalizeProxyLocation(input.location),
+        };
+        data.proxies.push(entry);
+        imported.push(entry);
+      }
+      save(data);
+      return imported;
     },
 
     deleteProxy(id) {
@@ -642,6 +677,7 @@ function createStore(dir) {
 module.exports = {
   createStore,
   normalizeProxy,
+  normalizeProxyLocation,
   normalizeBrowserVersion,
   normalizeStartUrls,
   normalizeCookies,

@@ -293,7 +293,7 @@ function Shell() {
 
         <Layout style={{ marginLeft: siderOpen ? 228 : 64, minHeight: '100vh', transition: 'margin-left 180ms ease' }}>
           <Content style={{ padding: '24px 28px 40px' }}>
-            <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+            <div style={{ maxWidth: 1560, margin: '0 auto' }}>
               {update && ['available', 'downloading', 'downloaded', 'error'].includes(update.status) && (
                 <Alert
                   style={{ marginBottom: 16 }}

@@ -47,3 +47,18 @@ export function groupOptions(profiles) {
     .sort()
     .map((group) => ({ value: group, label: group }));
 }
+
+// The regional-indicator pair renders as the Apple/Noto flag emoji for the country.
+export function countryFlag(code) {
+  const value = String(code || '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(value)) return '';
+  return String.fromCodePoint(...[...value].map((char) => 0x1f1e6 + char.charCodeAt(0) - 65));
+}
+
+export function proxyLocationText(proxy, { withCity = false } = {}) {
+  const location = proxy && proxy.location;
+  if (!location || !location.countryCode) return '';
+  const parts = [countryFlag(location.countryCode), location.countryCode];
+  if (withCity && location.city) parts.push(`· ${location.city}`);
+  return parts.filter(Boolean).join(' ');
+}

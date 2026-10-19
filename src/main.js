@@ -11,7 +11,7 @@ const { spawn, execFile } = require('node:child_process');
 const { app, BrowserWindow, dialog, ipcMain, screen, shell } = require('electron');
 const { createStore, normalizeProxy } = require('./store');
 const { findChromium, detectBrowserMajor, launch, stop } = require('./chromium');
-const { startRelay, checkProxy, lookupGeo } = require('./proxy');
+const { startRelay, checkProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
 const { parseProxyString } = require('./proxy-parse');
 const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
@@ -705,10 +705,85 @@ function setupIpc() {
   });
 
   ipcMain.handle('proxies:list', () => store.listProxies());
-  ipcMain.handle('proxies:save', (_e, input) => {
-    const saved = store.saveProxy(input);
+  ipcMain.handle('proxies:save', async (_e, input) => {
+    const existing = input.id ? store.listProxies().find((entry) => entry.id === input.id) : null;
+    let location = input.location || null;
+    const unchanged = existing
+      && existing.host === input.host
+      && existing.port === Number(input.port)
+      && existing.type === input.type
+      && (existing.username || '') === (input.username || '');
+    if (!location && unchanged) location = existing.location || null;
+    if (!location) {
+      try {
+        location = await lookupProxyLocation(input);
+      } catch {
+        location = null;
+      }
+    }
+    const saved = store.saveProxy({ ...input, location });
     notify();
     return saved;
+  });
+
+  ipcMain.handle('proxies:recheck', async (_e, id) => {
+    const proxy = store.listProxies().find((entry) => entry.id === id);
+    if (!proxy) throw new Error('proxy not found');
+    const location = await lookupProxyLocation(proxy);
+    const saved = store.saveProxy({ ...proxy, location });
+    notify();
+    return saved;
+  });
+
+  ipcMain.handle('proxies:import', async (_e, text, options = {}) => {
+    const lines = String(text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const existing = store.listProxies();
+    const parsed = [];
+    const errors = [];
+    let skipped = 0;
+
+    for (const line of lines) {
+      try {
+        const entry = parseProxyString(line, options.defaultType || 'http');
+        const duplicate = existing.some((proxy) => proxy.type === entry.type
+          && proxy.host === entry.host
+          && proxy.port === entry.port
+          && proxy.username === entry.username);
+        if (duplicate) {
+          skipped += 1;
+          continue;
+        }
+        parsed.push({ ...entry, name: `${options.namePrefix ? `${options.namePrefix} ` : ''}${entry.host}:${entry.port}` });
+      } catch (err) {
+        errors.push({ line, error: err.message });
+      }
+    }
+
+    const total = parsed.length;
+    let done = 0;
+    const results = [];
+    const worker = async () => {
+      for (;;) {
+        const entry = parsed.shift();
+        if (!entry) return;
+        let location = null;
+        if (options.check !== false) {
+          try {
+            location = await lookupProxyLocation(entry);
+          } catch {
+            location = null;
+          }
+        }
+        results.push({ ...entry, location });
+        done += 1;
+        if (win && !win.isDestroyed()) win.webContents.send('proxies:progress', { done, total });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, Math.max(1, total)) }, worker));
+
+    const imported = store.saveProxies(results);
+    notify();
+    return { imported: imported.length, skipped, errors };
   });
   ipcMain.handle('proxies:delete', (_e, id) => {
     store.deleteProxy(id);
@@ -769,10 +844,12 @@ function setupIpc() {
   });
 
   ipcMain.handle('proxy:parse', (_e, text, defaultType) => parseProxyString(text, defaultType));
-  ipcMain.handle('proxy:check', (_e, proxy) => {
+  ipcMain.handle('proxy:check', async (_e, proxy) => {
     const clean = normalizeProxy(proxy);
     if (!clean) throw new Error('enter a proxy host first');
-    return checkProxy(clean);
+    const exit = await checkProxy(clean);
+    const location = await lookupProxyLocation(clean).catch(() => null);
+    return { ...exit, location };
   });
 
   ipcMain.handle('settings:get', () => {

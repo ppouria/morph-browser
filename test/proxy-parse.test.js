@@ -98,3 +98,25 @@ test('IPv6 hosts and quotes around the line are tolerated', () => {
   const p = parseProxyString('"socks5://[2001:db8::1]:1080"');
   assert.deepEqual([p.host, p.port, p.type], ['2001:db8::1', 1080, 'socks5']);
 });
+
+test('reads the formats advertised by GoLogin and AdsPower', () => {
+  const formats = [
+    '192.168.0.1:8000:login:password',
+    'http://192.168.0.1:8000:login:password',
+    'http://192.168.0.1:8000:login:password:myproxy',
+    'socks5://login:password@192.168.0.1:8000',
+    'socks5://login:password@192.168.0.1:8000:myname',
+    'login:password@192.168.0.1:8000',
+    '192.168.0.1:8000',
+  ];
+  for (const format of formats) {
+    const parsed = parseProxyString(format);
+    assert.equal(parsed.host, '192.168.0.1');
+    assert.equal(parsed.port, 8000);
+    assert.ok(['http', 'socks5'].includes(parsed.type));
+  }
+  const socks = parseProxyString('socks5://login:password@1.2.3.4:1080');
+  assert.equal(socks.type, 'socks5');
+  assert.equal(socks.username, 'login');
+  assert.equal(socks.password, 'password');
+});

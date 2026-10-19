@@ -384,3 +384,28 @@ test('update and autostart settings are stored', () => {
   assert.equal(changed.launchOnBoot, true);
   assert.deepEqual(changed.updates, { checkOnLaunch: true, autoDownload: false, installOnQuit: true });
 });
+
+test('saved proxies keep the checked location', () => {
+  const store = createStore(tmpDir());
+  const proxy = store.saveProxy({
+    name: 'DE residential',
+    type: 'http',
+    host: 'de.example',
+    port: 8000,
+    location: { ip: '1.2.3.4', country: 'Germany', countryCode: 'de', city: 'Berlin' },
+  });
+  assert.deepEqual(proxy.location, {
+    ip: '1.2.3.4', country: 'Germany', countryCode: 'DE', city: 'Berlin', checkedAt: proxy.location.checkedAt,
+  });
+  assert.equal(store.listProxies()[0].location.countryCode, 'DE');
+
+  const unknown = store.saveProxy({ name: 'Unknown', type: 'http', host: 'x.example', port: 1, location: { countryCode: '??' } });
+  assert.equal(unknown.location, null);
+
+  const bulk = store.saveProxies([
+    { name: 'A', type: 'http', host: 'a.example', port: 1 },
+    { name: 'B', type: 'http', host: 'b.example', port: 2, location: { countryCode: 'NL', country: 'Netherlands', ip: '5.6.7.8' } },
+  ]);
+  assert.equal(bulk.length, 2);
+  assert.equal(store.listProxies().length, 4);
+});

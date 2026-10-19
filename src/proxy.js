@@ -56,6 +56,40 @@ async function checkProxy(proxy, url = 'http://api.ipify.org/?format=json') {
   }
 }
 
+// Country, city and IP of a saved proxy, shown next to its name in the app.
+async function lookupProxyLocation(proxy, { timeoutMs = 12000 } = {}) {
+  const relay = await startRelay(proxy);
+  try {
+    try {
+      const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,country,countryCode,city,query', timeoutMs);
+      const data = JSON.parse(body);
+      if (data.status === 'success' && data.countryCode) {
+        return {
+          ip: data.query || null,
+          country: data.country || null,
+          countryCode: String(data.countryCode).toUpperCase(),
+          city: data.city || null,
+          checkedAt: Date.now(),
+        };
+      }
+    } catch {
+      // Fall through to the second provider.
+    }
+    const body = await requestThroughRelay(relay, 'http://ipwho.is/', timeoutMs);
+    const data = JSON.parse(body);
+    if (!data.success || !data.country_code) throw new Error('location lookup failed');
+    return {
+      ip: data.ip || null,
+      country: data.country || null,
+      countryCode: String(data.country_code).toUpperCase(),
+      city: data.city || null,
+      checkedAt: Date.now(),
+    };
+  } finally {
+    await relay.close().catch(() => {});
+  }
+}
+
 // Timezone, country and coordinates of the exit IP, used by the "Based on IP" fingerprint modes.
 // A failure is not fatal: the caller falls back to the real system values.
 async function lookupGeo(proxy, { timeoutMs = 5000 } = {}) {
@@ -78,4 +112,4 @@ async function lookupGeo(proxy, { timeoutMs = 5000 } = {}) {
   }
 }
 
-module.exports = { startRelay, upstreamUrl, checkProxy, lookupGeo, requestThroughRelay };
+module.exports = { startRelay, upstreamUrl, checkProxy, lookupGeo, lookupProxyLocation, requestThroughRelay };

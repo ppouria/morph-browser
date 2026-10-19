@@ -166,6 +166,18 @@ body {
   overflow: hidden;
 }
 
+.proxy-flag {
+  flex: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.proxy-country {
+  flex: none;
+  font-size: 10.5px;
+  color: #8c8c8c;
+}
+
 .proxy-host {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;

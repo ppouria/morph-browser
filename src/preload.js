@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('api', {
   stopProfile: (id) => ipcRenderer.invoke('profiles:stop', id),
   listProxies: () => ipcRenderer.invoke('proxies:list'),
   saveProxy: (input) => ipcRenderer.invoke('proxies:save', input),
+  importProxies: (text, options) => ipcRenderer.invoke('proxies:import', text, options),
+  recheckProxy: (id) => ipcRenderer.invoke('proxies:recheck', id),
+  onProxiesProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('proxies:progress', listener);
+    return () => ipcRenderer.removeListener('proxies:progress', listener);
+  },
   deleteProxy: (id) => ipcRenderer.invoke('proxies:delete', id),
   listKernels: () => ipcRenderer.invoke('kernels:list'),
   listMajors: (kernel) => ipcRenderer.invoke('browsers:majors', kernel),
