@@ -157,22 +157,30 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     showDetails && {
       title: 'Details',
       key: 'details',
-      render: (_, profile) => (
-        <Tooltip title={[profile.group, ...profile.tags, chromeLabel(profile), profile.totp ? '2FA' : null].filter(Boolean).join(' · ')}>
-        <div className="profile-details">
-          {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
-          {profile.tags.slice(0, 2).map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
-          {profile.tags.length > 2 && <Tag bordered={false}>+{profile.tags.length - 2}</Tag>}
-          <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
-          {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
-          {profile.startUrls.length > 0 && (
-            <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-              {profile.startUrls.length} tab{profile.startUrls.length > 1 ? 's' : ''}
-            </Text>
-          )}
-        </div>
-        </Tooltip>
-      ),
+      width: 240,
+      render: (_, profile) => {
+        // A tag that repeats the group name would show the same word twice.
+        const tags = (profile.tags || []).filter((tag) => tag !== profile.group);
+        const summary = [profile.group, ...tags, chromeLabel(profile), profile.totp ? '2FA' : null]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <Tooltip title={summary}>
+            <div className="profile-details">
+              {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
+              {tags.slice(0, 2).map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
+              {tags.length > 2 && <Tag bordered={false}>+{tags.length - 2}</Tag>}
+              <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
+              {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
+              {profile.startUrls.length > 0 && (
+                <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                  {profile.startUrls.length} tab{profile.startUrls.length > 1 ? 's' : ''}
+                </Text>
+              )}
+            </div>
+          </Tooltip>
+        );
+      },
     },
     showProxy && {
       title: 'Proxy',
