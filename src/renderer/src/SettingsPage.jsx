@@ -3,7 +3,9 @@ import {
   App as AntApp, Button, Card, Col, Descriptions, Divider, Input, Popconfirm, Row, Segmented, Select, Space, Switch, Tag, Typography,
 } from 'antd';
 import {
-  DeleteOutlined, FolderOpenOutlined, GithubOutlined, ReloadOutlined,
+  BgColorsOutlined, ChromeOutlined, CloudDownloadOutlined, DeleteOutlined, DesktopOutlined,
+  FolderOpenOutlined, GithubOutlined, IdcardOutlined, InfoCircleOutlined, ReloadOutlined,
+  RocketOutlined, ToolOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import { versionLabel } from './format';
@@ -89,9 +91,9 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
   const defaults = settings.defaults || {};
 
   return (
-    <Row gutter={[16, 16]}>
-      <Col xs={24} lg={12}>
-        <Card title="Appearance" size="small">
+    <div className="settings-grid">
+      <div className="settings-card">
+        <Card title={<Space size={8}><BgColorsOutlined />Appearance</Space>} size="small">
           <Paragraph type="secondary">Follow the system, or pin a theme for this app.</Paragraph>
           <Space direction="vertical" size={10} style={{ width: '100%' }}>
             <Segmented
@@ -116,27 +118,10 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             </div>
           </Space>
         </Card>
-      </Col>
+      </div>
 
-      <Col xs={24} lg={12}>
-        <Card title="Window" size="small">
-          <Space direction="vertical" size={6} style={{ width: '100%' }}>
-            <Space>
-              <Switch
-                checked={settings.rememberWindow !== false}
-                onChange={(checked) => patch({ rememberWindow: checked })}
-              />
-              <Text>Remember window size and position</Text>
-            </Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              The window opens where you left it. Turn this off to always start at the default size.
-            </Text>
-          </Space>
-        </Card>
-      </Col>
-
-      <Col xs={24} lg={12}>
-        <Card title="Launch behaviour" size="small">
+      <div className="settings-card">
+        <Card title={<Space size={8}><RocketOutlined />Launch behaviour</Space>} size="small">
           <Space direction="vertical" size={6} style={{ width: '100%' }}>
             <Space>
               <Switch
@@ -152,10 +137,27 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             </Text>
           </Space>
         </Card>
-      </Col>
+      </div>
 
-      <Col xs={24} lg={12}>
-        <Card title="New profile defaults" size="small">
+      <div className="settings-card">
+        <Card title={<Space size={8}><DesktopOutlined />Window</Space>} size="small">
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            <Space>
+              <Switch
+                checked={settings.rememberWindow !== false}
+                onChange={(checked) => patch({ rememberWindow: checked })}
+              />
+              <Text>Remember window size and position</Text>
+            </Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              The window opens where you left it. Turn this off to always start at the default size.
+            </Text>
+          </Space>
+        </Card>
+      </div>
+
+      <div className="settings-card">
+        <Card title={<Space size={8}><IdcardOutlined />New profile defaults</Space>} size="small">
           <Paragraph type="secondary">Values a new profile starts with. You can still change them per profile.</Paragraph>
           <Row gutter={[10, 10]}>
             <Col span={12}>
@@ -218,12 +220,13 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             </Col>
           </Row>
         </Card>
-      </Col>
+      </div>
 
-      <Col span={24}>
+      <div className="settings-card wide">
         <Card
           title={(
             <Space>
+              <CloudDownloadOutlined />
               <span>Downloaded browsers</span>
               <Tag bordered={false}>{formatBytes(total)}</Tag>
             </Space>
@@ -287,10 +290,10 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             </div>
           ))}
         </Card>
-      </Col>
+      </div>
 
-      <Col xs={24} lg={12}>
-        <Card title="System Chromium" size="small">
+      <div className="settings-card">
+        <Card title={<Space size={8}><ChromeOutlined />System Chromium</Space>} size="small">
           <Paragraph type="secondary">
             {settings.detected ? `Detected: ${settings.detected}` : 'No Chrome or Chromium found. Set a path or pin a Chrome version per profile.'}
           </Paragraph>
@@ -303,10 +306,10 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             <Button type="primary" loading={saving} onClick={savePath}>Save</Button>
           </Space.Compact>
         </Card>
-      </Col>
+      </div>
 
-      <Col xs={24} lg={12}>
-        <Card title="Maintenance" size="small">
+      <div className="settings-card">
+        <Card title={<Space size={8}><ToolOutlined />Maintenance</Space>} size="small">
           <Space direction="vertical" size={10} style={{ width: '100%' }}>
             <Button icon={<FolderOpenOutlined />} onClick={() => api.openDataDir().catch((err) => notify.error(err.message))}>
               Open data folder
@@ -329,10 +332,10 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             </Popconfirm>
           </Space>
         </Card>
-      </Col>
+      </div>
 
-      <Col span={24}>
-        <Card title="About" size="small">
+      <div className="settings-card wide">
+        <Card title={<Space size={8}><InfoCircleOutlined />About</Space>} size="small">
           <Descriptions column={{ xs: 1, sm: 2, md: 3 }} size="small">
             <Descriptions.Item label="Version">{info ? info.version : '—'}</Descriptions.Item>
             <Descriptions.Item label="Electron">{info ? info.electron : '—'}</Descriptions.Item>
@@ -349,7 +352,7 @@ export default function SettingsPage({ settings, kernels = [], themeMode, onThem
             for now.
           </Text>
         </Card>
-      </Col>
-    </Row>
+      </div>
+    </div>
   );
 }

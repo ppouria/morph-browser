@@ -230,3 +230,69 @@ body {
   gap: 12px;
   padding: 3px 0;
 }
+
+/* Native scrollbars follow the app theme. */
+html[data-theme="light"] {
+  --scroll-track: #f2f4f7;
+  --scroll-thumb: #c6ccd6;
+  --scroll-thumb-hover: #aab2bf;
+}
+
+html[data-theme="dark"] {
+  --scroll-track: #101216;
+  --scroll-thumb: #3a404b;
+  --scroll-thumb-hover: #4b5261;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scroll-track);
+  border-radius: 999px;
+  background: var(--scroll-thumb);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scroll-track);
+}
+
+/* Settings: cards flow in columns so a short card never leaves an empty hole. */
+.settings-grid {
+  column-count: 2;
+  column-gap: 16px;
+}
+
+.settings-card {
+  margin: 0 0 16px;
+  break-inside: avoid;
+}
+
+.settings-card.wide {
+  column-span: all;
+}
+
+.settings-card .ant-card {
+  break-inside: avoid;
+}
+
+@media (max-width: 900px) {
+  .settings-grid {
+    column-count: 1;
+  }
+}

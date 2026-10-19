@@ -52,6 +52,13 @@ function Shell() {
 
   const isDark = themeMode === 'system' ? systemDark : themeMode === 'dark';
 
+  // Native controls (scrollbars, selects, focus rings) follow the app theme, not the OS theme.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = isDark ? 'dark' : 'light';
+    root.style.colorScheme = isDark ? 'dark' : 'light';
+  }, [isDark]);
+
   const refresh = useCallback(async () => {
     const [nextProfiles, nextProxies, nextSettings, nextTrash] = await Promise.all([
       api.listProfiles(),
