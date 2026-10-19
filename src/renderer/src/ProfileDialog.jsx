@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AutoComplete, Select } from 'antd';
 import './dialog.css';
 import api from './api';
 import {
@@ -275,7 +276,7 @@ function Field({ label, icon, children, span2 = false, hint }) {
   );
 }
 
-export default function ProfileDialog({ open, profile, proxies, majors, kernels, settings, isDark, onClose, onSaved }) {
+export default function ProfileDialog({ open, profile, profiles = [], proxies, majors, kernels, settings, isDark, onClose, onSaved }) {
   const [draft, setDraft] = useState(blankDraft);
   const [tab, setTab] = useState('general');
   const [saving, setSaving] = useState(false);
@@ -340,6 +341,12 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
 
   const patch = (values) => setDraft((current) => ({ ...current, ...values }));
   const patchFp = (values) => setDraft((current) => ({ ...current, fingerprint: { ...current.fingerprint, ...values } }));
+
+  const groupSuggestions = useMemo(() => [...new Set(profiles.map((item) => item.group).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b)), [profiles]);
+
+  const tagSuggestions = useMemo(() => [...new Set(profiles.flatMap((item) => item.tags || []))]
+    .sort((a, b) => a.localeCompare(b)), [profiles]);
 
   const kernelOptions = useMemo(() => (kernels.length ? kernels : [
     { id: 'chrome', label: 'Google Chrome' },
@@ -514,7 +521,15 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
             </div>
           </Field>
           <Field label="Group">
-            <input className="pm-input" value={draft.group} maxLength={60} onChange={(event) => patch({ group: event.target.value })} placeholder="Optional" />
+            <AutoComplete
+              value={draft.group}
+              options={groupSuggestions.map((group) => ({ value: group }))}
+              onChange={(value) => patch({ group: value })}
+              filterOption={(input, option) => String(option.value).toLowerCase().includes(String(input).toLowerCase())}
+              placeholder="Optional"
+              allowClear
+              style={{ width: '100%' }}
+            />
           </Field>
           <Field label="Kernel" hint={kernelDescription}>
             <PmSelect
@@ -523,12 +538,15 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
               onChange={(value) => patch({ kernel: value, browserVersion: '' })}
             />
           </Field>
-          <Field label="Tags" span2 hint="Comma separated. Shown as chips in the profile list.">
-            <input
-              className="pm-input"
-              value={draft.tags}
-              onChange={(event) => patch({ tags: event.target.value })}
+          <Field label="Tags" span2 hint="Pick an existing tag or type a new one and press Enter.">
+            <Select
+              mode="tags"
+              value={draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean)}
+              options={tagSuggestions.map((tag) => ({ value: tag, label: tag }))}
+              onChange={(values) => patch({ tags: values.join(', ') })}
+              tokenSeparators={[',']}
               placeholder="shop, warmup, client-a"
+              style={{ width: '100%' }}
             />
           </Field>
           <Field

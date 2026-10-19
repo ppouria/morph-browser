@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, App as AntApp, Badge, Button, Dropdown, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography,
+  Alert, App as AntApp, AutoComplete, Badge, Button, Dropdown, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import {
   DeleteOutlined, DownloadOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, FileTextOutlined, PlusOutlined, PoweroffOutlined, TagsOutlined, UploadOutlined,
@@ -92,7 +92,11 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     const values = await batchForm.validateFields();
     const patch = {};
     if (values.group !== undefined) patch.group = values.group || '';
-    if (values.tags !== undefined) patch.tags = String(values.tags || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    if (values.tags !== undefined) {
+      patch.tags = Array.isArray(values.tags)
+        ? values.tags
+        : String(values.tags || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    }
     setBusy(true);
     const ok = await run(() => api.batchUpdate([...selected], patch), 'Profiles updated');
     setBusy(false);
@@ -313,10 +317,21 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
       >
         <Form form={batchForm} layout="vertical" preserve={false} style={{ marginTop: 12 }}>
           <Form.Item name="group" label="Group" extra="Leave empty to clear the group.">
-            <Input placeholder="Group name" />
+            <AutoComplete
+              allowClear
+              placeholder="Group name"
+              options={groups.map((option) => ({ value: option.value }))}
+              filterOption={(input, option) => String(option.value).toLowerCase().includes(String(input).toLowerCase())}
+            />
           </Form.Item>
-          <Form.Item name="tags" label="Tags" extra="Comma separated; replaces the current tags.">
-            <Input placeholder="shop, warmup" />
+          <Form.Item name="tags" label="Tags" extra="Replaces the current tags. Pick a suggestion or type a new one.">
+            <Select
+              mode="tags"
+              allowClear
+              tokenSeparators={[',']}
+              placeholder="shop, warmup"
+              options={tags}
+            />
           </Form.Item>
         </Form>
       </Modal>

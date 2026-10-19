@@ -377,6 +377,7 @@ function Shell() {
         <ProfileDialog
           open={editor.open}
           profile={editor.profile}
+          profiles={profiles}
           proxies={proxies}
           majors={majors}
           kernels={kernels}

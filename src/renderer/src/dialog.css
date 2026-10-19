@@ -429,3 +429,41 @@
   flex: none;
   border-radius: 3px;
 }
+
+/* Ant Design controls inside the custom dialog pick up its surface colors. */
+.pm-field .ant-select,
+.pm-field .ant-select-selector {
+  width: 100%;
+}
+
+.pm-field .ant-select-single .ant-select-selector {
+  height: 38px;
+  border-radius: 10px;
+}
+
+.pm-field .ant-select-multiple .ant-select-selector {
+  min-height: 38px;
+  border-radius: 10px;
+  padding-block: 4px;
+}
+
+.pm-field .ant-select .ant-select-selector,
+.pm-field .ant-select .ant-select-selector:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+.pm-field .ant-select-focused .ant-select-selector {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-ring) !important;
+}
+
+.pm-field .ant-select .ant-select-selection-placeholder,
+.pm-field .ant-select .ant-select-arrow {
+  color: var(--muted) !important;
+}
+
+.pm-field .ant-select .ant-select-selection-item {
+  color: var(--text);
+}
