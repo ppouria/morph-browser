@@ -68,7 +68,7 @@ test('downloads and unpacks a build once, then reuses it', async () => {
 
   assert.deepEqual(await manager.listVersions(), ['150', '148']);
   const exe = await manager.ensureBrowser('150');
-  assert.match(exe, /150\.0\.7871\.186\/chrome-linux\/chrome$/);
+  assert.ok(exe.endsWith(path.join('150.0.7871.186', 'chrome-linux', 'chrome')));
   await manager.ensureBrowser('150');
   assert.equal(calls.downloads, 1);
   assert.equal(calls.extract, 1);

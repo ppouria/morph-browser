@@ -20,7 +20,7 @@ test('the registry exposes every kernel with a description', () => {
 });
 
 test('the chromium snapshot kernel only offers the latest build', async () => {
-  const manager = createChromiumManager({ cacheDir: tmp(), platform: 'linux' });
+  const manager = createChromiumManager({ cacheDir: tmp(), platform: 'linux', arch: 'x64' });
   assert.deepEqual(await manager.listVersions(), ['latest']);
   await assert.rejects(manager.ensureBrowser('150'), /only ships the latest/);
 });
@@ -60,7 +60,7 @@ test('chrome for testing downloads and unpacks a build', async () => {
   });
   assert.deepEqual(await manager.listVersions(), ['151']);
   const exe = await manager.ensureBrowser('151');
-  assert.match(exe, /151\.0\.7000\.10\/chrome-linux64\/chrome$/);
+  assert.ok(exe.endsWith(path.join('151.0.7000.10', 'chrome-linux64', 'chrome')));
   assert.deepEqual(manager.listInstalled(), ['151.0.7000.10']);
   assert.equal(calls.length, 1);
 });
@@ -168,7 +168,7 @@ test('firefox downloads and unpacks a build once', async () => {
   });
   assert.deepEqual(await manager.listVersions(), ['158.0.1', '153.5.0esr']);
   const exe = await manager.ensureBrowser('158.0.1');
-  assert.match(exe, /158\.0\.1\/firefox\/firefox$/);
+  assert.ok(exe.endsWith(path.join('158.0.1', 'firefox', 'firefox')));
   assert.deepEqual(manager.listInstalled(), ['158.0.1']);
   await assert.rejects(manager.ensureBrowser('nightly'), /invalid Firefox version/);
 });
