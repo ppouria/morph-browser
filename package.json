@@ -17,7 +17,8 @@
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "build/icon.png"
     ],
     "directories": {
       "output": "dist"
@@ -68,7 +69,8 @@
       "category": "Utility",
       "artifactName": "${name}-${version}-linux-${arch}.${ext}",
       "syncDesktopName": true
-    }
+    },
+    "icon": "build/icon.png"
   },
   "dependencies": {
     "proxy-chain": "^3.0.1"

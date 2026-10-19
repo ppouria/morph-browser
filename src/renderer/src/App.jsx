@@ -128,12 +128,13 @@ function Shell() {
           style={{ borderRight: `1px solid ${isDark ? '#262626' : '#f0f0f0'}`, position: 'sticky', top: 0, height: '100vh' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px 14px' }}>
-            <div style={{
-              width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center',
-              background: 'linear-gradient(135deg, #4f7cff, #7c3aed)', color: '#fff', fontSize: 15, fontWeight: 700,
-            }}>
-              M
-            </div>
+            <img
+              src="./logo.png"
+              alt="Morph Browser"
+              width={30}
+              height={30}
+              style={{ borderRadius: 8, display: 'block', flex: 'none' }}
+            />
             <div style={{ lineHeight: 1.25 }}>
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>Morph Browser</div>
               <Text type="secondary" style={{ fontSize: 11 }}>Local workspace</Text>
