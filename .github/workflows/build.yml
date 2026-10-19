@@ -80,3 +80,4 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+          overwrite: true
