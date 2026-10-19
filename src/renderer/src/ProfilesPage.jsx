@@ -1,18 +1,31 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert, App as AntApp, Avatar, Badge, Button, Dropdown, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography,
+  Alert, App as AntApp, Badge, Button, Dropdown, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography,
 } from 'antd';
 import {
-  DeleteOutlined, DownloadOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, ImportOutlined, PlusOutlined, PoweroffOutlined, TagsOutlined, UploadOutlined,
+  DeleteOutlined, DownloadOutlined, EditOutlined, EllipsisOutlined, ExportOutlined, FileTextOutlined, PlusOutlined, PoweroffOutlined, TagsOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from './api';
-import { avatarColor, chromeLabel, groupOptions, initialOf } from './format';
+import { chromeLabel, groupOptions } from './format';
 
 const { Text } = Typography;
 
-const errorText = (err) => String(err && err.message ? err.message : err)
-  .replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+// The table trades columns for space as the window narrows, so it never needs a scrollbar.
+function useViewport() {
+  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  useEffect(() => {
+    const onResize = () => setSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return size;
+}
+
+function errorText(err) {
+  return String(err
+    .replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+}
 
 export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefresh }) {
   const { message } = AntApp.useApp();
@@ -23,6 +36,7 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
   const [busy, setBusy] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchForm] = Form.useForm();
+  const viewport = useViewport();
 
   const groups = useMemo(() => groupOptions(profiles), [profiles]);
   const tags = useMemo(() => [...new Set(profiles.flatMap((profile) => profile.tags || []))]
@@ -109,34 +123,55 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
     }
   };
 
+  const showDetails = viewport.width >= 720;
+  const showProxy = viewport.width >= 1000;
+  const showLast = viewport.width >= 1140;
+  const showStatus = viewport.width >= 860;
+  const pageSize = Math.max(4, Math.floor((viewport.height - 380) / 55));
+
   const columns = [
     {
       title: 'Profile',
       dataIndex: 'name',
+      width: 185,
       render: (_, profile) => (
-        <Space size={10} align="start">
-          <Avatar shape="square" style={{ background: avatarColor(`${profile.id}${profile.name}`), flex: 'none' }}>
-            {initialOf(profile.name)}
-          </Avatar>
-          <span>
-            <div style={{ fontWeight: 500 }}>{profile.name}</div>
-            <Space size={4} wrap>
-              {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
-              {profile.tags.map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
-              <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
-              {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
-              {profile.startUrls.length > 0 && (
-                <Text type="secondary" style={{ fontSize: 12 }}>{profile.startUrls.length} start tab{profile.startUrls.length > 1 ? 's' : ''}</Text>
-              )}
-            </Space>
-          </span>
+        <Space size={8} align="center">
+          <img src="./logo.png" alt="" width={28} height={28} style={{ borderRadius: 6, display: 'block', flex: 'none' }} />
+          <Tooltip title={profile.name}>
+            <Text strong ellipsis style={{ maxWidth: 118 }}>{profile.name}</Text>
+          </Tooltip>
+          {profile.notes && (
+            <Tooltip title={profile.notes}>
+              <FileTextOutlined style={{ color: '#8c8c8c', fontSize: 12, flex: 'none' }} />
+            </Tooltip>
+          )}
         </Space>
       ),
     },
-    {
+    showDetails && {
+      title: 'Details',
+      key: 'details',
+      render: (_, profile) => (
+        <Tooltip title={[profile.group, ...profile.tags, chromeLabel(profile), profile.totp ? '2FA' : null].filter(Boolean).join(' · ')}>
+        <div className="profile-details">
+          {profile.group && <Tag bordered={false}>{profile.group}</Tag>}
+          {profile.tags.slice(0, 2).map((value) => <Tag key={value} bordered={false} color="purple">{value}</Tag>)}
+          {profile.tags.length > 2 && <Tag bordered={false}>+{profile.tags.length - 2}</Tag>}
+          <Tag bordered={false} color="blue">{chromeLabel(profile)}</Tag>
+          {profile.totp && <Tag bordered={false} color="green">2FA</Tag>}
+          {profile.startUrls.length > 0 && (
+            <Text type="secondary" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+              {profile.startUrls.length} tab{profile.startUrls.length > 1 ? 's' : ''}
+            </Text>
+          )}
+        </div>
+        </Tooltip>
+      ),
+    },
+    showProxy && {
       title: 'Proxy',
       dataIndex: 'proxy',
-      width: 250,
+      width: 150,
       render: (proxy) => (proxy ? (
         <Space size={6}>
           <Tag color="geekblue" style={{ marginInlineEnd: 0, textTransform: 'uppercase', fontSize: 10 }}>{proxy.type}</Tag>
@@ -144,28 +179,27 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
         </Space>
       ) : <Text type="secondary">Direct</Text>),
     },
-    {
+    showLast && {
       title: 'Last opened',
       dataIndex: 'lastOpenedAt',
-      width: 175,
+      width: 115,
       sorter: (a, b) => String(a.lastOpenedAt || '').localeCompare(String(b.lastOpenedAt || '')),
       render: (value) => (value ? <Text type="secondary">{dayjs(value).format('MMM D, HH:mm')}</Text> : <Text type="secondary">—</Text>),
     },
-    {
+    showStatus && {
       title: 'Status',
       dataIndex: 'running',
-      width: 160,
+      width: 88,
       render: (running, profile) => (
-        <Space direction="vertical" size={0}>
+        <Tooltip title={running && profile.debugPort ? `DevTools port ${profile.debugPort}` : ''}>
           <Badge status={running ? 'processing' : 'default'} text={running ? 'Running' : 'Stopped'} />
-          {running && profile.debugPort && <Text type="secondary" style={{ fontSize: 11 }}>CDP :{profile.debugPort}</Text>}
-        </Space>
+        </Tooltip>
       ),
     },
     {
       title: '',
       key: 'actions',
-      width: 150,
+      width: 135,
       align: 'right',
       render: (_, profile) => (
         <Space size={4}>
@@ -247,13 +281,15 @@ export default function ProfilesPage({ profiles, loading, onNew, onEdit, onRefre
       )}
 
       <Table
+        className="profiles-table"
         rowKey="id"
         size="middle"
         loading={loading}
         dataSource={rows}
-        columns={columns}
-        pagination={false}
-        rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
+        columns={columns.filter(Boolean)}
+        pagination={{ pageSize, showSizeChanger: false, hideOnSinglePage: true }}
+        tableLayout="fixed" 
+        rowSelection={{ columnWidth: 48, selectedRowKeys: selected, onChange: setSelected }}
         onRow={(profile) => ({ onDoubleClick: () => onEdit(profile) })}
         locale={{
           emptyText: (

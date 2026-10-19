@@ -5,3 +5,53 @@ body {
 }
 .ant-table-row { cursor: default; }
 .ant-descriptions-item-label { white-space: nowrap; }
+
+/* Sidebar: a compact icon rail that widens only while the pointer is over it. */
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+
+.app-logo {
+  transition: transform 180ms ease;
+}
+
+.ant-layout-sider:hover .app-logo {
+  transform: scale(1.12);
+}
+
+.profiles-table .ant-table-thead th {
+  white-space: nowrap;
+}
+
+.profiles-table .ant-table-selection-column,
+.profiles-table td {
+  vertical-align: middle;
+}
+
+.profile-details {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.profile-details .ant-tag {
+  margin-inline-end: 0;
+}
+
+.profile-details .ant-typography,
+.profile-details .ant-tag {
+  flex: none;
+}
+
+.profiles-table .ant-table-cell .ant-typography code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}

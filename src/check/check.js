@@ -356,3 +356,19 @@ $('#copy').addEventListener('click', async () => {
 });
 
 run().catch(() => {});
+
+// A profile can open this page with #note=... so the note from the editor is visible immediately.
+(() => {
+  const note = new URLSearchParams(location.hash.slice(1)).get('note');
+  if (!note) return;
+  const card = document.createElement('article');
+  card.className = 'card note-card';
+  const title = document.createElement('h2');
+  title.textContent = 'Profile note';
+  const body = document.createElement('p');
+  body.className = 'note-text';
+  body.textContent = note;
+  card.append(title, body);
+  const grid = $('.grid');
+  if (grid) grid.parentNode.insertBefore(card, grid);
+})();

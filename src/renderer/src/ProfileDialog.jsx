@@ -422,7 +422,7 @@ export default function ProfileDialog({ open, profile, proxies, majors, kernels,
 
       <div className="pm-section">
         <div className="pm-section-title">Notes</div>
-        <Field label="Remark">
+        <Field label="Note" hint="Shown as an icon in the list and on the profile's start page.">
           <textarea className="pm-textarea" rows={2} maxLength={2000} value={draft.notes} onChange={(event) => patch({ notes: event.target.value })} placeholder="Anything worth remembering about this profile" />
         </Field>
       </div>

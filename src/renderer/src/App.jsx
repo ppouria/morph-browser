@@ -46,6 +46,7 @@ function Shell() {
   const [kernels, setKernels] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [siderOpen, setSiderOpen] = useState(false);
   const [editor, setEditor] = useState({ open: false, profile: null });
   const [proxyEditor, setProxyEditor] = useState({ open: false, proxy: null });
 
@@ -123,22 +124,39 @@ function Shell() {
       <Layout style={{ minHeight: '100vh' }}>
         <Sider
           width={228}
-          breakpoint="lg"
-          collapsedWidth={0}
-          style={{ borderRight: `1px solid ${isDark ? '#262626' : '#f0f0f0'}`, position: 'sticky', top: 0, height: '100vh' }}
+          collapsedWidth={64}
+          collapsed={!siderOpen}
+          trigger={null}
+          onMouseEnter={() => setSiderOpen(true)}
+          onMouseLeave={() => setSiderOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            height: '100vh',
+            zIndex: 20,
+            overflow: 'hidden',
+            borderRight: `1px solid ${isDark ? '#262626' : '#f0f0f0'}`,
+            background: isDark ? '#141414' : '#ffffff',
+            transition: 'width 180ms ease, box-shadow 180ms ease',
+            boxShadow: siderOpen ? '0 18px 50px rgba(0, 0, 0, 0.28)' : 'none',
+          }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '18px 20px 14px' }}>
+          <div className="app-brand" style={{ justifyContent: siderOpen ? 'flex-start' : 'center', padding: siderOpen ? '18px 20px 14px' : '18px 0 14px' }}>
             <img
+              className="app-logo"
               src="./logo.png"
               alt="Morph Browser"
               width={30}
               height={30}
               style={{ borderRadius: 8, display: 'block', flex: 'none' }}
             />
-            <div style={{ lineHeight: 1.25 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Morph Browser</div>
-              <Text type="secondary" style={{ fontSize: 11 }}>Local workspace</Text>
-            </div>
+            {siderOpen && (
+              <div style={{ lineHeight: 1.25, whiteSpace: 'nowrap' }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5 }}>Morph Browser</div>
+                <Text type="secondary" style={{ fontSize: 11 }}>Local workspace</Text>
+              </div>
+            )}
           </div>
 
           <Menu
@@ -157,21 +175,23 @@ function Shell() {
               onClick={({ key }) => setPage(key)}
               style={{ borderInlineEnd: 'none', marginBottom: 10 }}
             />
-            <Segmented
-              block
-              size="small"
-              value={themeMode}
-              onChange={handleTheme}
-              options={[
-                { value: 'system', label: 'Auto' },
-                { value: 'light', label: 'Light' },
-                { value: 'dark', label: 'Dark' },
-              ]}
-            />
+            {siderOpen && (
+              <Segmented
+                block
+                size="small"
+                value={themeMode}
+                onChange={handleTheme}
+                options={[
+                  { value: 'system', label: 'Auto' },
+                  { value: 'light', label: 'Light' },
+                  { value: 'dark', label: 'Dark' },
+                ]}
+              />
+            )}
           </div>
         </Sider>
 
-        <Layout>
+        <Layout style={{ marginLeft: siderOpen ? 228 : 64, minHeight: '100vh', transition: 'margin-left 180ms ease' }}>
           <Content style={{ padding: '24px 28px 40px' }}>
             <div style={{ maxWidth: 1180, margin: '0 auto' }}>
               <div style={{ marginBottom: 20 }}>

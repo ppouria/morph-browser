@@ -56,7 +56,40 @@ function useDataDir() {
 }
 
 app.setName('Morph Browser');
+app.setDesktopName('morph-browser.desktop');
+if (process.platform === 'win32') app.setAppUserModelId('dev.morphbrowser.app');
+// Wayland and GNOME match a window to its desktop entry; this makes the dock show the app icon.
+app.commandLine.appendSwitch('class', 'morph-browser');
 useDataDir();
+
+// In development the app runs from the checkout, so a desktop entry is written once to point the
+// shell at the icon. Packaged builds ship their own entry and skip this.
+function ensureDevDesktopEntry() {
+  if (app.isPackaged || process.platform !== 'linux') return;
+  try {
+    const icon = path.join(__dirname, '..', 'build', 'icon.png');
+    if (!fs.existsSync(icon)) return;
+    const dir = path.join(app.getPath('home'), '.local', 'share', 'applications');
+    const exec = `"${process.execPath}" "${path.join(__dirname, '..')}" --no-sandbox`;
+    const content = [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=Morph Browser',
+      'Comment=Multi-profile browser manager',
+      `Exec=${exec}`,
+      `Icon=${icon}`,
+      'Terminal=false',
+      'Categories=Utility;',
+      'StartupWMClass=morph-browser',
+      '',
+    ].join('\n');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'morph-browser.desktop');
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== content) fs.writeFileSync(file, content);
+  } catch (err) {
+    console.error('desktop entry:', err.message);
+  }
+}
 
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'chromium');
 const running = new Map(); // profile id -> { child, relay, cdp, debugPort, executable }
@@ -154,6 +187,39 @@ function splitLaunchArgs(text) {
   return args;
 }
 
+// The note travels in the fragment: it is visible on the start page but never sent to a server.
+function noteUrl(profile) {
+  const base = checkServer ? checkServer.url : '';
+  if (!base) return '';
+  return profile.notes ? `${base}#note=${encodeURIComponent(profile.notes)}` : base;
+}
+
+function isCheckUrl(url) {
+  return Boolean(checkServer) && (url === checkServer.url || url.startsWith(checkServer.url));
+}
+
+// The tabs a running profile has open, minus the check page itself.
+async function readTabs(entry) {
+  if (!entry || !entry.cdp) return null;
+  try {
+    const { targetInfos } = await entry.cdp.conn.send('Target.getTargets');
+    return targetInfos
+      .filter((target) => target.type === 'page' && /^https?:/i.test(target.url) && !isCheckUrl(target.url))
+      .map((target) => target.url);
+  } catch {
+    return null;
+  }
+}
+
+function snapshotTabs(id, entry) {
+  readTabs(entry).then((urls) => {
+    if (!urls) return;
+    const profile = store.getProfile(id);
+    if (!profile || JSON.stringify(profile.lastTabs || []) === JSON.stringify(urls)) return;
+    store.setLastTabs(id, urls);
+  }).catch(() => {});
+}
+
 // Firefox has no DevTools protocol: cookies go through WebDriver BiDi and everything else is a
 // profile preference. The process is treated like Chromium once it is running.
 async function launchFirefoxProfile(id, profile, executable) {
@@ -182,7 +248,9 @@ async function launchFirefoxProfile(id, profile, executable) {
     });
 
     const startUrls = [];
-    if (store.getSettings().openCheckPage !== false && checkServer) startUrls.push(checkServer.url);
+    if (store.getSettings().openCheckPage !== false && checkServer) {
+      startUrls.push(noteUrl(profile));
+    }
     startUrls.push(...profile.startUrls);
 
     const debugPort = await freePort();
@@ -333,8 +401,17 @@ async function launchProfile(id) {
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can
     // reach are visible right after launch.
     const startUrls = [];
-    if (store.getSettings().openCheckPage !== false && checkServer) startUrls.push(checkServer.url);
-    startUrls.push(...profile.startUrls);
+    if (store.getSettings().openCheckPage !== false && checkServer) {
+      startUrls.push(noteUrl(profile));
+    }
+    for (const url of profile.startUrls) {
+      if (!startUrls.includes(url)) startUrls.push(url);
+    }
+    // Tabs from the previous session return after the info page, so that page is always first.
+    for (const url of profile.lastTabs || []) {
+      if (startUrls.length >= 12) break;
+      if (!startUrls.includes(url) && !isCheckUrl(url)) startUrls.push(url);
+    }
     const prepareOptions = { cookies: profile.cookies, startUrls, script, emulation };
 
     // Start URLs always open over DevTools, never on the command line: the first page has to wait
@@ -357,6 +434,8 @@ async function launchProfile(id) {
     const finish = (err) => {
       if (err) console.error(`profile ${id}:`, err.message);
       if (running.get(id) !== entry) return;
+      if (entry.tabsTimer) clearInterval(entry.tabsTimer);
+      snapshotTabs(id, entry);
       running.delete(id);
       if (entry.cdp) entry.cdp.close();
       if (relay) relay.close().catch((e) => console.error(e));
@@ -364,6 +443,7 @@ async function launchProfile(id) {
     };
     entry.child.on('error', finish);
     entry.child.on('exit', () => finish());
+    entry.tabsTimer = setInterval(() => snapshotTabs(id, entry), 12000);
     store.markOpened(id);
     notify();
   } catch (err) {
@@ -394,12 +474,15 @@ async function startBrowser(launchOptions, prepareOptions, noSandbox) {
   }
 }
 
-function stopProfile(id) {
+async function stopProfile(id) {
   const entry = running.get(id);
-  if (entry) {
-    if (entry.cdp) entry.cdp.close();
-    stop(entry.child);
-  }
+  if (!entry) return;
+  if (entry.tabsTimer) clearInterval(entry.tabsTimer);
+  // Remember the open tabs before the process goes away.
+  const urls = await readTabs(entry);
+  if (urls) store.setLastTabs(id, urls);
+  if (entry.cdp) entry.cdp.close();
+  stop(entry.child);
 }
 
 function setupIpc() {
@@ -575,6 +658,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => app.quit());
 
   app.whenReady().then(async () => {
+    ensureDevDesktopEntry();
     store = createStore(app.getPath('userData'));
     checkServer = await startCheckServer().catch((err) => {
       console.error('check page server:', err.message);

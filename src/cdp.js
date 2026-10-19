@@ -146,14 +146,35 @@ async function prepareBrowser(port, { cookies = [], startUrls = [], script = '',
 
     if (cookies.length) await conn.send('Storage.setCookies', { cookies });
 
+    const created = new Set();
+    let firstTarget = null;
     for (const url of startUrls) {
       const { targetId } = await conn.send('Target.createTarget', { url: 'about:blank' });
+      if (!firstTarget) firstTarget = targetId;
+      created.add(targetId);
       pendingUrls.set(targetId, url);
       // The attach event installs the overrides and then navigates; waiting keeps the tab order.
       for (let i = 0; i < 100 && !attached.has(targetId); i++) {
         await new Promise((r) => setTimeout(r, 50));
       }
       if (attached.has(targetId)) await attached.get(targetId);
+    }
+
+    // Focus the first tab (the info page) so it is what the user sees, even when older tabs were
+    // restored after it.
+    if (firstTarget && created.size > 1) {
+      await conn.send('Target.activateTarget', { targetId: firstTarget }).catch(() => {});
+    }
+
+    // Chromium starts with one blank tab. Once the real tabs exist, a leftover new tab is noise.
+    if (created.size) {
+      const { targetInfos } = await conn.send('Target.getTargets');
+      for (const info of targetInfos) {
+        if (info.type !== 'page' || created.has(info.targetId)) continue;
+        if (info.url === 'about:blank' || info.url === '' || info.url === 'chrome://newtab/') {
+          await conn.send('Target.closeTarget', { targetId: info.targetId }).catch(() => {});
+        }
+      }
     }
   } catch (err) {
     conn.close();

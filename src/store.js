@@ -312,6 +312,7 @@ function withDefaults(profile) {
     launchArgs: profile.launchArgs || '',
     totp: profile.totp || null,
     lastOpenedAt: profile.lastOpenedAt || null,
+    lastTabs: Array.isArray(profile.lastTabs) ? profile.lastTabs.slice(0, 30) : [],
     deletedAt: profile.deletedAt || null,
     notes: profile.notes || profile.remark || '',
     group: profile.group || '',
@@ -365,6 +366,7 @@ function createStore(dir) {
       launchArgs: normalizeLaunchArgs(input.launchArgs),
       totp: normalizeTotp(input.totp),
       lastOpenedAt: existing ? existing.lastOpenedAt : null,
+      lastTabs: existing ? existing.lastTabs : [],
       deletedAt: existing ? existing.deletedAt : null,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now,
@@ -435,6 +437,15 @@ function createStore(dir) {
       data.profiles.push(copy);
       save(data);
       return copy;
+    },
+
+    // The tabs a profile had open are reused on its next launch.
+    setLastTabs(id, urls) {
+      const data = load();
+      const profile = data.profiles.find((p) => p.id === id);
+      if (!profile) return;
+      profile.lastTabs = [...new Set((urls || []).filter((url) => typeof url === 'string'))].slice(0, 30);
+      save(data);
     },
 
     markOpened(id) {
