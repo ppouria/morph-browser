@@ -10,6 +10,7 @@ import {
 import api from './api';
 import { versionLabel } from './format';
 import { OS_OPTIONS, SCREEN_PRESETS } from './profileOptions';
+import { KERNEL_ICONS } from './kernelIcons';
 
 const { Text, Paragraph } = Typography;
 
@@ -207,7 +208,10 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
                   style={{ width: '100%' }}
                   value={defaults.kernel}
                   onChange={(value) => patch({ defaults: { kernel: value } })}
-                  options={kernels.map((kernel) => ({ value: kernel.id, label: kernel.label }))}
+                  options={kernels.map((kernel) => ({
+                  value: kernel.id,
+                  label: <Space size={6}>{KERNEL_ICONS[kernel.id]}<span>{kernel.label}</span></Space>,
+                }))}
                 />
               </Col>
               <Col span={12}>

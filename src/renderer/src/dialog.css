@@ -420,3 +420,12 @@
   align-items: center;
   gap: 6px;
 }
+
+.pm-kernel-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  display: block;
+  flex: none;
+  border-radius: 3px;
+}

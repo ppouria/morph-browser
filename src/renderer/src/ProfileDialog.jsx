@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { totpCode, secondsLeft } from './totp';
 import { versionLabel } from './format';
+import { KERNEL_ICONS } from './kernelIcons';
 import {
   CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
@@ -52,16 +53,7 @@ function Chevron() {
 
 // A select whose list is portaled into the dialog, so it inherits the dialog theme and is never
 // clipped by the form's scroll container.
-const KERNEL_ICONS = {
-  chrome: <ChromeOutlined style={{ color: '#4285f4' }} />,
-  cft: <ChromeOutlined style={{ color: '#34a853' }} />,
-  chromium: <ChromeOutlined style={{ color: '#7a869a' }} />,
-  ungoogled: <ChromeOutlined style={{ color: '#0f9d58' }} />,
-  fingerprint: <ChromeOutlined style={{ color: '#fbbc05' }} />,
-  brave: <SafetyOutlined style={{ color: '#fb542b' }} />,
-  thorium: <ExperimentOutlined style={{ color: '#a855f7' }} />,
-  firefox: <GlobalOutlined style={{ color: '#ff7139' }} />,
-};
+
 
 const FIELD_ICONS = {
   Name: <UserOutlined />,
