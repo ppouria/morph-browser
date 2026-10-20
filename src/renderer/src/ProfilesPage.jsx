@@ -45,7 +45,7 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
 
   const rows = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return profiles.filter((profile) => {
+    const filtered = profiles.filter((profile) => {
       if (group && profile.group !== group) return false;
       if (tag && !(profile.tags || []).includes(tag)) return false;
       if (!term) return true;
@@ -54,6 +54,13 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
         || (profile.notes || '').toLowerCase().includes(term)
         || (profile.tags || []).some((value) => value.toLowerCase().includes(term));
     });
+    // Most recent activity first: a newly opened profile jumps to the top, and a newly created
+    // profile starts at the top even before it is opened.
+    const recency = (profile) => {
+      const time = Date.parse(profile.lastOpenedAt || profile.createdAt || '');
+      return Number.isFinite(time) ? time : 0;
+    };
+    return filtered.sort((a, b) => recency(b) - recency(a) || (b.number || 0) - (a.number || 0));
   }, [profiles, query, group, tag]);
 
   const run = async (fn, success) => {
