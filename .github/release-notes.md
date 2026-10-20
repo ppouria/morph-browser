@@ -1,45 +1,36 @@
-# Morph Browser 1.2.0
+# Morph Browser 1.2.1
 
-This release makes profile fingerprints follow the proxy and gives every new profile a unique,
-platform-consistent identity.
+This release fixes two critical proxy issues.
 
-## Proxy-aligned fingerprints
+## Fixed
 
-- When a proxy has a reachable exit IP, the profile's **Real** timezone, language, geolocation and
-  `Accept-Language` follow the proxy country. A German exit now gives `Europe/Berlin`, `de-DE`,
-  `navigator.languages = [de-DE, de, en-US, en]` and a matching `en` fallback.
-- Country codes are mapped to real BCP47 tags (`DE → de-DE`, `BR → pt-BR`, `GB → en-GB`, ...).
-- The geo lookup runs through the same app-proxy/profile-proxy chain as the browser, tries a second
-  provider when the first is blocked, and is not cached so rotating proxies do not keep a stale
-  timezone.
-- Custom values still win. The automatic alignment can be turned off in Settings.
+- **Plain HTTP no longer bypasses the app proxy.** HTTP requests were sent on a direct socket while
+  HTTPS used the tunnel. Both now use the same app-proxy → profile-proxy chain.
+- **SOCKS5 chaining works on real proxies.** The handshake is now performed on the already-tunnelled
+  socket, so a SOCKS profile proxy reached through a SOCKS app proxy returns the profile exit IP
+  instead of the app-proxy IP.
+- **No fallback means no direct connection.** When a profile has no fallback and its proxy is
+  unreachable, the launch is stopped with a clear message. Chromium is never allowed to fall back to
+  the system route, and a failed relay aborts the launch.
+- Proxy checks use the same fixed chain, so checking a profile proxy now reflects what the browser
+  will actually use.
 
-## Unique new profiles
+## From 1.2.0
 
-- New profiles can be randomized on creation: GPU, screen, CPU, memory and font set are chosen from
-  the selected OS's real-world values, and canvas, WebGL and audio noise are enabled.
-- OS changes now keep the GPU and fonts consistent, so a macOS profile never reports an NVIDIA
-  desktop GPU.
-- Existing profiles are not changed.
-
-## Android emulation (1.1.0)
-
-- Android (emulated) profiles with Pixel, Galaxy and Xiaomi presets, reduced Chrome Android UA,
-  Android Client Hints, touch, mobile viewport, orientation, media queries, connection, battery,
-  media devices and Android fonts.
+- Proxy-aligned timezone, language, geolocation and `Accept-Language` from the exit country.
+- Randomized fingerprints for new profiles with OS-consistent GPUs, screens and noise.
+- Android emulation, per-profile fallback proxies and the app-wide proxy.
 
 ## Limits
 
-- Browser-level alignment cannot hide TLS/JA3, HTTP/2 fingerprints, WebGL capability limits, font
-  rasterisation or behaviour. Advanced systems such as Google or Meta can still notice
-  inconsistencies. Use a clean country-consistent sticky proxy and one stable identity per account.
-- Android emulation is best effort; real devices or emulators are required for strong mobile
-  detection resistance.
+Browser-level fixes cannot hide TLS/JA3, HTTP/2 fingerprints, WebGL capability limits, font
+rasterisation or behaviour. Use a clean, country-consistent sticky proxy and one stable identity per
+account. Do not use this project to bypass identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.2.0-windows-setup.exe` or portable
-- macOS: `morph-browser-1.2.0-macos-arm64.dmg` / `morph-browser-1.2.0-macos-x64.dmg`
-- Linux: `morph-browser-1.2.0-linux-x86_64.AppImage` or `morph-browser-1.2.0-linux-amd64.deb`
+- Windows: `morph-browser-1.2.1-windows-setup.exe` or portable
+- macOS: `morph-browser-1.2.1-macos-arm64.dmg` / `morph-browser-1.2.1-macos-x64.dmg`
+- Linux: `morph-browser-1.2.1-linux-x86_64.AppImage` or `morph-browser-1.2.1-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
