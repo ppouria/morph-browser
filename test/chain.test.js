@@ -134,7 +134,7 @@ test('CONNECT tunnels chain both proxies', async (t) => {
   assert.match(log[1], new RegExp(`^profile:CONNECT:127\\.0\\.0\\.1:${destPort}$`));
 });
 
-function mockSocks(name, log) {
+function mockSocks(name, log, { respond = null } = {}) {
   const server = net.createServer((socket) => {
     socket.once('data', () => {
       log.push(`${name}:hello`);
@@ -156,8 +156,12 @@ function mockSocks(name, log) {
         }
         const port = request.readUInt16BE(offset);
         log.push(`${name}:CONNECT:${host}:${port}`);
+        socket.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
+        if (respond) {
+          socket.once('data', () => { log.push(`${name}:REQUEST`); socket.end(respond); });
+          return;
+        }
         const upstream = net.connect(port, host, () => {
-          socket.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
           socket.pipe(upstream);
           upstream.pipe(socket);
         });
@@ -238,4 +242,55 @@ test('a profile without its own proxy uses only the app proxy', async (t) => {
   const answer = await getVia(chain.proxyServer, `http://127.0.0.1:${destPort}/only`);
   assert.equal(answer.body, 'app-only');
   assert.match(log[0], new RegExp(`^app:CONNECT:127\\.0\\.0\\.1:${destPort}$`));
+});
+
+test('plain HTTP is carried by the tunnel, not a direct socket', async (t) => {
+  const log = [];
+  const appSocks = mockSocks('app', log);
+  const appPort = await appSocks.listening;
+  const profileServer = http.createServer((req, res) => {
+    log.push(`profile:GET:${req.url}`);
+    res.end('tunneled-http');
+  });
+  const profilePort = await listen(profileServer);
+
+  const chain = await startChain(
+    { type: 'socks5', host: '127.0.0.1', port: appPort },
+    { type: 'http', host: '127.0.0.1', port: profilePort },
+  );
+  t.after(async () => {
+    await chain.close();
+    appSocks.server.close();
+    profileServer.close();
+  });
+
+  const answer = await getVia(chain.proxyServer, 'http://203.0.113.1/never-direct');
+  assert.equal(answer.body, 'tunneled-http');
+  assert.ok(log.some((line) => line === `app:CONNECT:127.0.0.1:${profilePort}`));
+  assert.ok(log.some((line) => line.startsWith('profile:GET:http://203.0.113.1/never-direct')));
+});
+
+test('plain HTTP through a SOCKS profile proxy stays in the tunnel', async (t) => {
+  const log = [];
+  const appProxy = mockProxy('app', log);
+  const appPort = await appProxy.listening;
+  const profileSocks = mockSocks('profile', log, {
+    respond: 'HTTP/1.1 200 OK\r\nContent-Length: 14\r\nConnection: close\r\n\r\nsocks-tunneled',
+  });
+  const profilePort = await profileSocks.listening;
+
+  const chain = await startChain(
+    { type: 'http', host: '127.0.0.1', port: appPort },
+    { type: 'socks5', host: '127.0.0.1', port: profilePort },
+  );
+  t.after(async () => {
+    await chain.close();
+    appProxy.server.close();
+    profileSocks.server.close();
+  });
+
+  const answer = await getVia(chain.proxyServer, 'http://203.0.113.1/never-direct');
+  assert.equal(answer.body, 'socks-tunneled');
+  assert.ok(log.some((line) => line === `app:CONNECT:127.0.0.1:${profilePort}`));
+  assert.ok(log.some((line) => line === 'profile:CONNECT:203.0.113.1:80'));
 });
