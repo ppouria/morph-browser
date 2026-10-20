@@ -153,6 +153,32 @@ The GitHub Actions workflow builds Windows (installer and portable), macOS (dmg 
 `store.json` holds profiles, proxies and settings. Browser data lives in `profiles/<id>`, downloaded
 builds in `browsers/`.
 
+## Detection risk
+
+Morph runs official Chromium-family desktop builds. A profile separates cookies, storage and cache,
+and it changes many values a page can read: user agent, Client Hints, timezone, language, screen,
+WebGL strings, touch support, noise and the proxy. But the browser underneath is still a desktop
+Chromium binary, so there is no guarantee that a strict site will not notice something unusual or
+link two profiles together.
+
+Some parts cannot be changed from inside the browser:
+
+- The TLS/JA3 and HTTP/2 fingerprints of the desktop network stack.
+- The real limits and behaviour of the GPU and graphics driver. Vendor and renderer strings can be
+  replaced, but the capabilities stay those of the desktop machine.
+- Font rendering and text metrics. The browser can claim that a font exists and can add noise, but
+  it cannot draw text exactly like a different operating system.
+- Desktop-only APIs, real sensor data, timing, and human behaviour.
+- Debugger/automation traces and crash or GPU timing.
+
+That means a profile is not an invisibility cloak. For better results, use a clean,
+country-consistent sticky residential or mobile proxy, keep timezone and language aligned with it,
+keep one stable profile per account, and avoid changing the fingerprint on every launch. Test the
+profile on a fingerprint-check page before using an important account.
+
+Never use this project to bypass a provider's identity, payment or KYC checks, or its terms of
+service.
+
 ## Notes
 
 - The app is local-only; it has no cloud sync, team management or RPA.
