@@ -1,7 +1,6 @@
 const http = require('node:http');
 const net = require('node:net');
 const tls = require('node:tls');
-const { SocksClient } = require('socks');
 
 const DEFAULT_TIMEOUT = 20000;
 
@@ -110,25 +109,117 @@ async function sendConnect(socket, proxy, host, port, timeout = DEFAULT_TIMEOUT)
   if (match[1] !== '200') throw new Error(`the proxy refused the tunnel with HTTP ${match[1]}`);
 }
 
-async function socksTunnel(proxy, host, port, { timeout = DEFAULT_TIMEOUT, socket = null } = {}) {
-  const options = {
-    proxy: {
-      host: proxy.host,
-      port: proxy.port,
-      type: 5,
-      ...(proxy.username ? { userId: proxy.username, password: proxy.password || '' } : {}),
-    },
-    destination: { host, port },
-    command: 'connect',
-    timeout,
+function ipv6Bytes(address) {
+  const clean = String(address).split('%')[0];
+  const [head, tail] = clean.split('::');
+  const left = head ? head.split(':').filter(Boolean) : [];
+  const right = tail ? tail.split(':').filter(Boolean) : [];
+  const groups = [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right];
+  const bytes = Buffer.alloc(16);
+  groups.slice(0, 8).forEach((group, index) => bytes.writeUInt16BE(parseInt(group, 16) || 0, index * 2));
+  return bytes;
+}
+
+function socksAddress(host) {
+  const version = net.isIP(host);
+  if (version === 4) return Buffer.from([1, ...host.split('.').map(Number)]);
+  if (version === 6) return Buffer.concat([Buffer.from([4]), ipv6Bytes(host)]);
+  const name = Buffer.from(String(host));
+  return Buffer.concat([Buffer.from([3, name.length]), name]);
+}
+
+// A tiny SOCKS5 client. It works with a fresh socket or with a socket that is already a tunnel
+// through another proxy, which is what the app-proxy -> profile-proxy chain needs.
+function socksReader(socket, timeout) {
+  let buffer = Buffer.alloc(0);
+  let waiter = null;
+  let failure = null;
+  const fail = (err) => {
+    if (!failure) failure = err;
+    if (waiter) { const wake = waiter; waiter = null; wake(); }
   };
-  if (socket) options.existing_socket = socket;
-  const info = await SocksClient.createConnection(options);
-  return info.socket;
+  const timer = setTimeout(() => fail(new Error('SOCKS handshake timed out')), timeout);
+  const onData = (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    if (waiter) { const wake = waiter; waiter = null; wake(); }
+  };
+  const onError = (err) => fail(err);
+  const onClose = () => fail(new Error('SOCKS connection closed during the handshake'));
+  socket.on('data', onData);
+  socket.once('error', onError);
+  socket.once('close', onClose);
+  // A previous handshake pauses the socket after releasing it; resume before reading again.
+  socket.resume();
+  return {
+    async take(count) {
+      while (buffer.length < count) {
+        if (failure) throw failure;
+        await new Promise((resolve) => { waiter = resolve; });
+      }
+      const out = buffer.subarray(0, count);
+      buffer = buffer.subarray(count);
+      return out;
+    },
+    release() {
+      clearTimeout(timer);
+      socket.off('data', onData);
+      socket.off('error', onError);
+      socket.off('close', onClose);
+      socket.pause();
+      if (buffer.length) socket.unshift(buffer);
+    },
+  };
+}
+
+async function socksHandshake(socket, proxy, host, port, timeout = DEFAULT_TIMEOUT) {
+  const reader = socksReader(socket, timeout);
+  try {
+    const methods = proxy.username ? [0, 2] : [0];
+    socket.write(Buffer.from([5, methods.length, ...methods]));
+    const greeting = await reader.take(2);
+    if (greeting[0] !== 5) throw new Error('the SOCKS proxy sent an invalid greeting');
+    if (greeting[1] === 2) {
+      const user = Buffer.from(proxy.username || '');
+      const pass = Buffer.from(proxy.password || '');
+      socket.write(Buffer.concat([Buffer.from([1, user.length]), user, Buffer.from([pass.length]), pass]));
+      const answer = await reader.take(2);
+      if (answer[1] !== 0) throw new Error('the SOCKS proxy rejected the username or password');
+    } else if (greeting[1] !== 0) {
+      throw new Error('the SOCKS proxy does not accept the available authentication');
+    }
+    const request = Buffer.concat([
+      Buffer.from([5, 1, 0]),
+      socksAddress(host),
+      Buffer.from([(Number(port) >> 8) & 255, Number(port) & 255]),
+    ]);
+    socket.write(request);
+    const head = await reader.take(4);
+    if (head[1] !== 0) throw new Error(`the SOCKS proxy refused the connection (code ${head[1]})`);
+    const atyp = head[3];
+    if (atyp === 1) await reader.take(4 + 2);
+    else if (atyp === 3) {
+      const length = (await reader.take(1))[0];
+      await reader.take(length + 2);
+    } else if (atyp === 4) await reader.take(16 + 2);
+    reader.release();
+    // The tunnel is ready; destination data only arrives after the first request, so resuming here
+    // does not race the caller.
+    socket.resume();
+    return socket;
+  } catch (err) {
+    reader.release();
+    socket.destroy();
+    throw err;
+  }
+}
+
+async function socksTunnel(proxy, host, port, { timeout = DEFAULT_TIMEOUT, socket = null } = {}) {
+  const tunnel = socket || await tcpConnect(proxy.host, proxy.port, timeout);
+  return socksHandshake(tunnel, proxy, host, port, timeout);
 }
 
 async function proxyOnSocket(proxy, socket, host, port, timeout = DEFAULT_TIMEOUT) {
-  if (proxy.type === 'socks5') return socksTunnel(proxy, host, port, { timeout, socket });
+  if (proxy.type === 'socks5') return socksHandshake(socket, proxy, host, port, timeout);
   let stream = socket;
   if (proxy.type === 'https') stream = await tlsWrap(stream, proxy.host, timeout);
   await sendConnect(stream, proxy, host, port, timeout);
@@ -199,14 +290,17 @@ function startChain(upstream, proxy, { timeout = DEFAULT_TIMEOUT } = {}) {
           ? await tlsWrap(track(hop), proxy.host, timeout)
           : track(hop);
         const headers = cleanHeaders(req.headers, { proxyAuth: proxy, host: target.host });
+        // http.request ignores a bare createConnection option, which would silently send plain
+        // HTTP traffic direct. A one-shot Agent is the supported way to supply the tunnel socket.
+        const agent = new http.Agent({ keepAlive: false, maxSockets: 1 });
+        agent.createConnection = () => stream;
         const upstreamReq = http.request({
           method: req.method,
           host: proxy.host,
           port: proxy.port,
           path: target.href,
           headers,
-          agent: false,
-          createConnection: () => stream,
+          agent,
         }, (upstreamRes) => {
           res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
           upstreamRes.pipe(res);
@@ -219,14 +313,15 @@ function startChain(upstream, proxy, { timeout = DEFAULT_TIMEOUT } = {}) {
       const tunnel = await chainTunnel(upstream, proxy, destination.host, destination.port, timeout);
       track(tunnel);
       const headers = cleanHeaders(req.headers, { host: target.host });
+      const agent = new http.Agent({ keepAlive: false, maxSockets: 1 });
+      agent.createConnection = () => tunnel;
       const upstreamReq = http.request({
         method: req.method,
         host: destination.host,
         port: destination.port,
         path: `${target.pathname}${target.search}`,
         headers,
-        agent: false,
-        createConnection: () => tunnel,
+        agent,
       }, (upstreamRes) => {
         res.writeHead(upstreamRes.statusCode, upstreamRes.headers);
         upstreamRes.pipe(res);
