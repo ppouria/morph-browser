@@ -41,6 +41,22 @@ on the local machine: there is no account, no cloud sync and no team service.
   timezone is set with the POSIX `TZ` variable, so it is honoured on Linux and macOS; Windows
   Firefox may keep the system timezone.
 
+## Android emulation
+
+- A profile OS can be set to **Android (emulated)**. The desktop browser then reports an Android
+  identity: reduced Chrome Android user agent, Client Hints (`Sec-CH-UA-Mobile`, platform, model,
+  platform version, architecture, bitness and form factor), arm platform string, touch points and
+  touch events, mobile viewport and DPR, portrait orientation, mobile `matchMedia` results,
+  cellular connection, battery, vibration and a mobile media-device list.
+- Device presets: Pixel 8, Pixel 8 Pro, Pixel 7, Galaxy S24, Galaxy S23 and Xiaomi 13. Each preset
+  carries its own model, Android version, screen size, DPR, GPU and core count.
+- Android is supported by the Chromium kernels only. Firefox and native Fingerprint Chromium modes
+  cannot provide this identity, so Android profiles fall back to the injected emulation.
+- This is a best-effort identity, not a real Android browser. TLS/JA3, HTTP/2 fingerprints, WebGL
+  capability limits, font rasterisation and user behaviour still belong to the desktop browser, so
+  advanced systems such as Google or Meta can still notice inconsistencies. For strong mobile
+  detection resistance, use a real Android device/emulator or a cloud phone.
+
 ## Proxies
 
 - Saved proxies and per-profile proxies are supported.
