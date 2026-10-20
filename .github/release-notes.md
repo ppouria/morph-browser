@@ -1,8 +1,12 @@
-# Morph Browser 1.2.1
+# Morph Browser 1.2.2
 
-This release fixes two critical proxy issues.
+This release fixes the profile ordering and keeps the 1.2.1 proxy fixes.
 
 ## Fixed
+
+- Profiles are sorted by the most recent activity. A newly created profile starts at the top, and
+  opening an older profile moves it above the rest. The Last opened column can still be sorted
+  manually.
 
 - **Plain HTTP no longer bypasses the app proxy.** HTTP requests were sent on a direct socket while
   HTTPS used the tunnel. Both now use the same app-proxy → profile-proxy chain.
@@ -29,8 +33,8 @@ account. Do not use this project to bypass identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.2.1-windows-setup.exe` or portable
-- macOS: `morph-browser-1.2.1-macos-arm64.dmg` / `morph-browser-1.2.1-macos-x64.dmg`
-- Linux: `morph-browser-1.2.1-linux-x86_64.AppImage` or `morph-browser-1.2.1-linux-amd64.deb`
+- Windows: `morph-browser-1.2.2-windows-setup.exe` or portable
+- macOS: `morph-browser-1.2.2-macos-arm64.dmg` / `morph-browser-1.2.2-macos-x64.dmg`
+- Linux: `morph-browser-1.2.2-linux-x86_64.AppImage` or `morph-browser-1.2.2-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
