@@ -458,3 +458,13 @@ test('an android profile keeps its device and OS', () => {
   assert.equal(profile.fingerprint.android.model, 'SM-S911B');
   assert.equal(store.getProfile(profile.id).fingerprint.android.width, 360);
 });
+
+test('geo alignment and fingerprint randomization settings are stored', () => {
+  const store = createStore(tmpDir());
+  const off = store.setSettings({ autoMatchGeo: false, randomizeNewProfile: false });
+  assert.equal(off.autoMatchGeo, false);
+  assert.equal(off.randomizeNewProfile, false);
+  const on = store.setSettings({ autoMatchGeo: true, randomizeNewProfile: true });
+  assert.equal(on.autoMatchGeo, true);
+  assert.equal(on.randomizeNewProfile, true);
+});

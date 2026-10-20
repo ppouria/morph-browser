@@ -5,6 +5,7 @@ const {
   uaMetadata,
   platformFor,
   resolveFingerprint,
+  languageForCountry,
   buildInjectionScript,
   flagsFor,
   buildKernelFlags,
@@ -44,9 +45,9 @@ test('IP modes read the geo lookup result', () => {
     geo: { timezone: 'Europe/Berlin', countryCode: 'DE', latitude: 52.52, longitude: 13.4 },
   });
   assert.equal(resolved.timezone, 'Europe/Berlin');
-  assert.equal(resolved.language, 'de');
+  assert.equal(resolved.language, 'de-DE');
   assert.deepEqual(resolved.location, { latitude: 52.52, longitude: 13.4 });
-  assert.equal(resolved.displayLanguage, 'de');
+  assert.equal(resolved.displayLanguage, 'de-DE');
 });
 
 test('custom timezone, screen and location win over the rest', () => {
@@ -184,7 +185,7 @@ test('kernel flags carry the native spoofing settings', () => {
   assert.ok(args.includes('--fingerprint-brand-version=150.0.0.0'));
   assert.ok(args.includes('--fingerprint-hardware-concurrency=8'));
   assert.ok(args.includes('--timezone=Europe/Berlin'));
-  assert.ok(args.includes('--accept-lang=de-DE'));
+  assert.ok(args.includes('--accept-lang=de-DE,de,en-US,en'));
   assert.ok(args.includes('--disable-non-proxied-udp'));
 });
 
@@ -230,4 +231,35 @@ test('android identities agree across the UA, Client Hints and display', () => {
   assert.match(script, /ontouchstart/);
   assert.match(script, /matchMedia/);
   assert.match(script, /Mali|Adreno/);
+});
+
+test('automatic geo alignment follows the proxy country for real fields', () => {
+  const fingerprint = normalizeFingerprint({});
+  const geo = { timezone: 'Europe/Berlin', countryCode: 'DE', latitude: 52.52, longitude: 13.4 };
+  const aligned = resolveFingerprint(fingerprint, { os: 'windows', geo, autoGeo: true });
+  assert.equal(aligned.timezone, 'Europe/Berlin');
+  assert.equal(aligned.language, 'de-DE');
+  assert.deepEqual(aligned.location, { latitude: 52.52, longitude: 13.4 });
+
+  const real = resolveFingerprint(fingerprint, { os: 'windows', geo, autoGeo: false });
+  assert.equal(real.timezone, null);
+  assert.equal(real.language, 'en-US');
+  assert.equal(real.location, null);
+
+  const custom = normalizeFingerprint({
+    timezone: { mode: 'custom', value: 'America/New_York' },
+    language: { mode: 'custom', value: 'fr-FR' },
+    location: { mode: 'block' },
+  });
+  const kept = resolveFingerprint(custom, { os: 'windows', geo, autoGeo: true });
+  assert.equal(kept.timezone, 'America/New_York');
+  assert.equal(kept.language, 'fr-FR');
+  assert.equal(kept.location, null);
+});
+
+test('country codes map to real browser language tags', () => {
+  assert.equal(languageForCountry('DE'), 'de-DE');
+  assert.equal(languageForCountry('US'), 'en-US');
+  assert.equal(languageForCountry('BR'), 'pt-BR');
+  assert.equal(languageForCountry('ZZ'), 'en-US');
 });
