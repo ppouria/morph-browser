@@ -212,6 +212,13 @@ function needsGeo(profile) {
   return [timezone.mode, language.mode, location.mode].includes('ip');
 }
 
+// When the app could derive a country from the proxy, "Real" fields can follow it too. Custom
+// values always win, and the setting turns the automatic alignment off.
+function usesAutoGeo(profile) {
+  const { timezone, language, location } = profile.fingerprint;
+  return [timezone.mode, language.mode, location.mode].includes('real');
+}
+
 // The change-IP URL is called before each launch, which is how rotating proxy services swap the exit IP.
 async function callChangeIp(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
@@ -387,12 +394,15 @@ async function chooseProxy(profile, upstream = null) {
 // profile preference. The process is treated like Chromium once it is running.
 async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = null, upstream = null) {
   const kernel = 'firefox';
-  const geo = profile.fingerprint && needsGeo(profile) && (proxy || upstream)
+  const autoGeo = store.getSettings().autoMatchGeo !== false
+    && Boolean(proxy || upstream)
+    && usesAutoGeo(profile);
+  const geo = (needsGeo(profile) || autoGeo) && (proxy || upstream)
     ? await lookupGeo(proxy || upstream, { upstream: proxy ? upstream : null })
     : null;
   const versions = await kernels.listVersions('firefox').catch(() => []);
   const version = uaVersion || profile.browserVersion || versions[0] || '128.0';
-  const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo });
+  const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo, autoGeo });
   const relay = upstream ? await startChain(upstream, proxy) : proxy ? await startRelay(proxy) : null;
 
   try {
@@ -401,7 +411,7 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
     const userAgent = profile.userAgent.mode === 'custom'
       ? profile.userAgent.value
       : firefoxUserAgent(profile.os, version);
-    const languages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean);
+    const languages = resolved.languages || [resolved.language];
 
     writeFirefoxPrefs(dir, {
       proxyServer: relay ? relay.proxyServer : null,
@@ -534,7 +544,8 @@ async function launchProfile(id) {
     // "Based on IP" needs the exit IP's timezone and country; a failed lookup falls back to the
     // real system values instead of blocking the launch.
     const exitProxy = chosen.proxy || upstream;
-    const geo = needsGeo(profile) && exitProxy
+    const autoGeo = store.getSettings().autoMatchGeo !== false && Boolean(exitProxy) && usesAutoGeo(profile);
+    const geo = (needsGeo(profile) || autoGeo) && exitProxy
       ? await lookupGeo(exitProxy, { upstream: chosen.proxy ? upstream : null })
       : null;
 
@@ -550,6 +561,7 @@ async function launchProfile(id) {
       os: profile.os,
       major: effectiveVersion,
       geo,
+      autoGeo,
     });
     const seed = seedFor(profile);
     const script = buildInjectionScript({ fingerprint: profile.fingerprint, resolved, seed, native });
@@ -568,7 +580,7 @@ async function launchProfile(id) {
         : profile.os === hostOs
           ? null
           : userAgentFor(profile.os, uaMajor, profile.fingerprint.android);
-    const acceptLanguages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean).join(',');
+    const acceptLanguages = (resolved.languages || []).join(',');
     const preferenceFlags = [];
     if (profile.prefs.blockImages) preferenceFlags.push('--blink-settings=imagesEnabled=false');
     if (profile.prefs.restorePages === false) preferenceFlags.push('--hide-crash-restore-bubble');

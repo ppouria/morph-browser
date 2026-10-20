@@ -7,6 +7,28 @@ const MAJOR_OPTIONS = ['155', '154', '153', '152', '151', '150', '149', '148', '
 
 const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android (emulated)' };
 
+// A proxy exit country should produce a language a real browser in that country would use.
+// The fallback stays en-US instead of a bare country code such as "de".
+const LANGUAGE_BY_COUNTRY = {
+  AE: 'ar-AE', AF: 'fa-AF', AL: 'sq-AL', AR: 'es-AR', AT: 'de-AT', AU: 'en-AU', BD: 'bn-BD',
+  BE: 'nl-BE', BG: 'bg-BG', BH: 'ar-BH', BR: 'pt-BR', BY: 'be-BY', CA: 'en-CA', CH: 'de-CH',
+  CL: 'es-CL', CN: 'zh-CN', CO: 'es-CO', CZ: 'cs-CZ', DE: 'de-DE', DK: 'da-DK', DZ: 'ar-DZ',
+  EE: 'et-EE', EG: 'ar-EG', ES: 'es-ES', FI: 'fi-FI', FR: 'fr-FR', GB: 'en-GB', GR: 'el-GR',
+  HK: 'zh-HK', HR: 'hr-HR', HU: 'hu-HU', ID: 'id-ID', IE: 'en-IE', IL: 'he-IL', IN: 'en-IN',
+  IQ: 'ar-IQ', IR: 'fa-IR', IS: 'is-IS', IT: 'it-IT', JO: 'ar-JO', JP: 'ja-JP', KE: 'en-KE',
+  KR: 'ko-KR', KW: 'ar-KW', KZ: 'kk-KZ', LB: 'ar-LB', LK: 'si-LK', LT: 'lt-LT', LU: 'fr-LU',
+  LV: 'lv-LV', MA: 'ar-MA', MX: 'es-MX', MY: 'ms-MY', NG: 'en-NG', NL: 'nl-NL', NO: 'nb-NO',
+  NZ: 'en-NZ', OM: 'ar-OM', PE: 'es-PE', PH: 'en-PH', PK: 'ur-PK', PL: 'pl-PL', PT: 'pt-PT',
+  QA: 'ar-QA', RO: 'ro-RO', RS: 'sr-RS', RU: 'ru-RU', SA: 'ar-SA', SE: 'sv-SE', SG: 'en-SG',
+  SI: 'sl-SI', SK: 'sk-SK', TH: 'th-TH', TN: 'ar-TN', TR: 'tr-TR', TW: 'zh-TW', UA: 'uk-UA',
+  US: 'en-US', UZ: 'uz-UZ', VN: 'vi-VN', ZA: 'en-ZA',
+};
+
+function languageForCountry(code) {
+  const country = String(code || '').toUpperCase();
+  return LANGUAGE_BY_COUNTRY[country] || 'en-US';
+}
+
 // Font families a page can probe with document.fonts.check. A preset makes a profile answer like
 // the matching OS instead of echoing whatever this machine has installed.
 const FONT_PRESETS = {
@@ -97,29 +119,37 @@ function platformFor(os) {
 
 // Turns the stored mode into the values Chromium is actually launched with. "ip" leaves the
 // decision to the geo lookup in main.js, which fills the resolved object in before launch.
-function resolveFingerprint(fingerprint, { os = 'windows', major = null, geo = null } = {}) {
-  const tz = fingerprint.timezone.mode === 'custom'
+function resolveFingerprint(fingerprint, { os = 'windows', major = null, geo = null, autoGeo = false } = {}) {
+  const timezoneMode = fingerprint.timezone.mode;
+  const useIpTimezone = timezoneMode === 'ip' || (autoGeo && timezoneMode === 'real');
+  const tz = timezoneMode === 'custom'
     ? fingerprint.timezone.value
-    : fingerprint.timezone.mode === 'ip' && geo && geo.timezone
+    : useIpTimezone && geo && geo.timezone
       ? geo.timezone
       : null;
 
   const languageMode = fingerprint.language.mode;
+  const useIpLanguage = languageMode === 'ip' || (autoGeo && languageMode === 'real');
   const language = languageMode === 'custom'
     ? fingerprint.language.value
-    : languageMode === 'ip' && geo && geo.countryCode
-      ? geo.countryCode.toLowerCase()
+    : useIpLanguage && geo && geo.countryCode
+      ? languageForCountry(geo.countryCode)
       : 'en-US';
 
-  const display = fingerprint.displayLanguage.mode === 'custom'
+  const displayMode = fingerprint.displayLanguage.mode;
+  const display = displayMode === 'custom'
     ? fingerprint.displayLanguage.value
-    : fingerprint.displayLanguage.mode === 'language'
+    : displayMode === 'language'
       ? language
-      : 'en-US';
+      : autoGeo && geo && geo.countryCode
+        ? languageForCountry(geo.countryCode)
+        : 'en-US';
 
-  const location = fingerprint.location.mode === 'custom'
+  const locationMode = fingerprint.location.mode;
+  const useIpLocation = locationMode === 'ip' || (autoGeo && locationMode === 'real');
+  const location = locationMode === 'custom'
     ? { latitude: fingerprint.location.latitude, longitude: fingerprint.location.longitude }
-    : fingerprint.location.mode === 'ip' && geo && Number.isFinite(geo.latitude)
+    : useIpLocation && geo && Number.isFinite(geo.latitude)
       ? { latitude: geo.latitude, longitude: geo.longitude }
       : null;
 
@@ -133,10 +163,12 @@ function resolveFingerprint(fingerprint, { os = 'windows', major = null, geo = n
         ? parsePreset(fingerprint.screen.preset)
         : null;
 
+  const languages = [...new Set([language, String(language).split('-')[0], 'en-US', 'en'].filter(Boolean))];
+
   return {
     timezone: tz,
     language,
-    languages: [language],
+    languages,
     displayLanguage: display,
     location,
     screen,
@@ -550,6 +582,7 @@ module.exports = {
   MAJOR_OPTIONS,
   FONT_PRESETS,
   uaMetadata,
+  languageForCountry,
   OS_LABELS,
   OS_LIST,
   userAgentFor,

@@ -14,10 +14,10 @@ import { totpCode, secondsLeft } from './totp';
 import { countryFlag, proxyLocationText, versionLabel } from './format';
 import { KERNEL_ICONS } from './kernelIcons';
 import {
-  ANDROID_DEVICES, CPU_OPTIONS, DEFAULT_ANDROID, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
+  ANDROID_DEVICES, CPU_OPTIONS, DEFAULT_ANDROID, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_BY_OS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
   TZ_OPTIONS, VENDORS, WEBGL_OPTIONS, WEBGPU_OPTIONS, WEBRTC_OPTIONS,
-  blankDraft, draftFromProfile, userAgentFor,
+  blankDraft, draftFromProfile, randomizeFingerprint, userAgentFor,
 } from './profileOptions';
 
 const DialogContext = createContext(null);
@@ -308,6 +308,9 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         const device = base.fingerprint.android;
         base.fingerprint.screen = { ...base.fingerprint.screen, preset: `${device.width}x${device.height}` };
         base.fingerprint.fonts = { mode: 'android' };
+        base.fingerprint.noise = { ...base.fingerprint.noise, canvas: true, webglImage: true, audioContext: true };
+      } else if (settings.randomizeNewProfile !== false) {
+        base.fingerprint = randomizeFingerprint(base.fingerprint, base.os);
       }
     }
     setDraft(base);
@@ -425,19 +428,8 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
 
   const randomize = () => {
     const pick = (list) => list[Math.floor(Math.random() * list.length)];
-    const gpu = pick(GPU_PAIRS);
     const os = pick(['windows', 'macos', 'linux']);
-    patch({
-      os,
-      fingerprint: {
-        ...draft.fingerprint,
-        webgl: { mode: 'custom', vendor: gpu.vendor, renderer: gpu.renderer },
-        screen: { ...draft.fingerprint.screen, mode: 'preset', preset: pick(SCREEN_PRESETS).value },
-        hardware: { cpu: pick([4, 6, 8, 12, 16]), ram: pick([4, 8]) },
-        fonts: { mode: os },
-        noise: { canvas: true, webglImage: true, audioContext: true, mediaDevice: true, clientRects: true, speechVoices: true },
-      },
-    });
+    patch({ os, fingerprint: randomizeFingerprint(draft.fingerprint, os) });
   };
 
   const androidDevice = (draft.fingerprint.android && draft.fingerprint.android.device) || DEFAULT_ANDROID.device;
@@ -448,7 +440,17 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       const preset = SCREEN_PRESETS.some((item) => item.value === draft.fingerprint.screen.preset)
         ? draft.fingerprint.screen.preset
         : '1920x1080';
-      patch({ os: value, fingerprint: { ...draft.fingerprint, screen: { ...draft.fingerprint.screen, preset } } });
+      const pairs = GPU_BY_OS[value] || GPU_BY_OS.windows;
+      const gpu = pairs[Math.floor(Math.random() * pairs.length)];
+      patch({
+        os: value,
+        fingerprint: {
+          ...draft.fingerprint,
+          webgl: { mode: 'custom', vendor: gpu.vendor, renderer: gpu.renderer },
+          fonts: { mode: value },
+          screen: { ...draft.fingerprint.screen, preset },
+        },
+      });
       return;
     }
     patch({
@@ -456,7 +458,10 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       fingerprint: {
         ...draft.fingerprint,
         android: selectedAndroid,
+        // The device preset supplies the GPU values, so a desktop custom GPU must not override it.
+        webgl: { mode: 'real' },
         fonts: { mode: 'android' },
+        noise: { ...draft.fingerprint.noise, canvas: true, webglImage: true, audioContext: true },
         screen: { ...draft.fingerprint.screen, mode: 'preset', preset: `${selectedAndroid.width}x${selectedAndroid.height}` },
       },
     });
@@ -468,6 +473,8 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       fingerprint: {
         ...draft.fingerprint,
         android: device,
+        webgl: { mode: 'real' },
+        fonts: { mode: 'android' },
         screen: { ...draft.fingerprint.screen, mode: 'preset', preset: `${device.width}x${device.height}` },
       },
     });

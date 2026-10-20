@@ -155,6 +155,43 @@ export const GPU_PAIRS = [
   { vendor: 'ARM', renderer: 'Mali-G78 MP14' },
 ];
 
+// A macOS profile with an NVIDIA desktop GPU is an instant inconsistency, so random values are
+// drawn from a platform-appropriate set.
+export const GPU_BY_OS = {
+  windows: [
+    { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+    { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+    { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+    { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  ],
+  macos: [
+    { vendor: 'Google Inc. (Apple)', renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)' },
+    { vendor: 'Google Inc. (Apple)', renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)' },
+    { vendor: 'Google Inc. (Apple)', renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)' },
+    { vendor: 'Google Inc. (Apple)', renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)' },
+  ],
+  linux: [
+    { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 6600 (radeonsi, navi23), OpenGL 4.6)' },
+    { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)' },
+    { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (nouveau), OpenGL 4.6)' },
+    { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 580 (polaris10), OpenGL 4.6)' },
+  ],
+};
+
+export function randomizeFingerprint(fingerprint, os) {
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const gpu = pick(GPU_BY_OS[os] || GPU_BY_OS.windows);
+  const screen = pick(SCREEN_PRESETS).value;
+  return {
+    ...fingerprint,
+    webgl: { mode: 'custom', vendor: gpu.vendor, renderer: gpu.renderer },
+    screen: { ...fingerprint.screen, mode: 'preset', preset: screen },
+    hardware: { cpu: pick([4, 6, 8, 12, 16]), ram: pick([4, 8]) },
+    fonts: { mode: os },
+    noise: { canvas: true, webglImage: true, audioContext: true, mediaDevice: true, clientRects: true, speechVoices: true },
+  };
+}
+
 export function blankFingerprint() {
   return {
     webRtc: 'proxy-udp',

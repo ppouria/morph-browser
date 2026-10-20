@@ -30,11 +30,23 @@ on the local machine: there is no account, no cloud sync and no team service.
 - Each profile window uses the profile name as its title. On Linux the window icon also carries the
   profile number, so windows are easy to tell apart.
 
+## Proxy alignment
+
+- When a proxy has a reachable exit IP, the app reads its country, timezone and coordinates. By
+  default the profile's **Real** timezone, language and location follow that country: a German exit
+  gives `Europe/Berlin`, `de-DE` and a German `Accept-Language`/`navigator.languages` list.
+- Custom values always win, and the alignment can be switched off in Settings.
+- The lookup runs through the same app-proxy/profile-proxy chain as the browser. Rotating or
+  country-mixing proxies can return a different country for each request, so use country-specific
+  sticky sessions when consistency matters.
+
 ## Fingerprints
 
 - User-agent (automatic or custom), operating system, timezone, language, screen size, fonts,
   WebGL vendor/renderer, WebGPU mode, CPU cores, device memory and WebRTC policy.
 - Optional noise for canvas, WebGL images, audio, media devices, client rects and speech voices.
+- New profiles can be randomized on creation: a GPU, screen, CPU, memory and font set that match the
+  selected OS, with canvas, WebGL and audio noise enabled. Existing profiles are not changed.
 - Fingerprint Chromium applies the fingerprint inside the browser (native), which is stronger than
   the DevTools-based spoofing used for the other Chromium kernels.
 - Firefox supports user-agent, language and WebRTC, but not canvas, WebGL or font spoofing. Its
@@ -144,6 +156,8 @@ builds in `browsers/`.
 ## Notes
 
 - The app is local-only; it has no cloud sync, team management or RPA.
+- Browser-level alignment cannot hide TLS/JA3, HTTP/2, WebGL capability or behaviour differences.
+  Use a clean, country-consistent sticky proxy and keep one stable identity per account.
 - Proxy passwords are stored in plain text for now.
 - Google's download hosts are unavailable in some regions, which blocks the Chrome and Chromium
   downloads there.

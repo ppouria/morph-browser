@@ -106,22 +106,39 @@ async function lookupProxyLocation(proxy, { timeoutMs = 12000, upstream = null }
   });
 }
 
-// Timezone, country and coordinates of the exit IP, used by the "Based on IP" fingerprint modes.
-// A failure is not fatal: the caller falls back to the real system values.
+// Timezone, country and coordinates of the exit IP, used by the "Based on IP" modes and by the
+// automatic proxy alignment. Two providers are tried because one may be blocked from some networks.
+// The result is not cached: rotating proxies can change country between launches, and a stale
+// timezone is worse than an extra lookup.
 async function lookupGeo(proxy, { timeoutMs = 5000, upstream = null } = {}) {
   if (!proxy) return null;
   try {
-    return await withProxy(proxy, upstream, async (relay) => {
-      const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
+    const value = await withProxy(proxy, upstream, async (relay) => {
+      try {
+        const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
+        const data = JSON.parse(body);
+        if (data.status === 'success' && data.timezone) {
+          return {
+            timezone: data.timezone,
+            countryCode: data.countryCode || null,
+            latitude: Number.isFinite(data.lat) ? data.lat : null,
+            longitude: Number.isFinite(data.lon) ? data.lon : null,
+          };
+        }
+      } catch {
+        // Fall through to the second provider.
+      }
+      const body = await requestThroughRelay(relay, 'http://ipwho.is/', timeoutMs);
       const data = JSON.parse(body);
-      if (data.status !== 'success') return null;
+      if (!data || data.success === false) return null;
       return {
-        timezone: data.timezone || null,
-        countryCode: data.countryCode || null,
-        latitude: Number.isFinite(data.lat) ? data.lat : null,
-        longitude: Number.isFinite(data.lon) ? data.lon : null,
+        timezone: data.timezone && data.timezone.id ? data.timezone.id : null,
+        countryCode: data.country_code || null,
+        latitude: Number.isFinite(data.latitude) ? data.latitude : null,
+        longitude: Number.isFinite(data.longitude) ? data.longitude : null,
       };
     });
+    return value;
   } catch {
     return null;
   }

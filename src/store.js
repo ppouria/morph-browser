@@ -29,6 +29,8 @@ const DEFAULT_SETTINGS = {
   density: 'middle',
   rememberWindow: true,
   launchOnBoot: false,
+  autoMatchGeo: true,
+  randomizeNewProfile: true,
   updates: {
     checkOnLaunch: true,
     autoDownload: true,
@@ -662,6 +664,8 @@ function createStore(dir) {
       }
       if ('rememberWindow' in patch) data.settings.rememberWindow = Boolean(patch.rememberWindow);
       if ('launchOnBoot' in patch) data.settings.launchOnBoot = Boolean(patch.launchOnBoot);
+      if ('autoMatchGeo' in patch) data.settings.autoMatchGeo = Boolean(patch.autoMatchGeo);
+      if ('randomizeNewProfile' in patch) data.settings.randomizeNewProfile = Boolean(patch.randomizeNewProfile);
       if ('updates' in patch) {
         const next = { ...data.settings.updates };
         const input = patch.updates || {};

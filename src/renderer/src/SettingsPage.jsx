@@ -267,6 +267,18 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Adds the app to the login items of this system.
               </Text>
+              <Divider style={{ margin: '4px 0' }} />
+              <Space>
+                <Switch
+                  checked={settings.autoMatchGeo !== false}
+                  onChange={(checked) => patch({ autoMatchGeo: checked })}
+                />
+                <Text>Match timezone and language with the proxy IP</Text>
+              </Space>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                When a proxy has a country, the profile uses that country's timezone, language and
+                geolocation. Custom values still win. Turn this off to keep the system values.
+              </Text>
             </Space>
           </Card>
         </div>
@@ -386,6 +398,18 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
                 </div>
               </Col>
             </Row>
+            <Divider style={{ margin: '10px 0 8px' }} />
+            <Space>
+              <Switch
+                checked={settings.randomizeNewProfile !== false}
+                onChange={(checked) => patch({ randomizeNewProfile: checked })}
+              />
+              <Text>Randomize the browser fingerprint for new profiles</Text>
+            </Space>
+            <Text type="secondary" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+              Picks a GPU, screen, CPU, memory and font set that match the selected OS, and enables
+              canvas, WebGL and audio noise. Existing profiles are not changed.
+            </Text>
           </Card>
         </div>
 
