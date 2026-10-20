@@ -4,7 +4,7 @@ import { AutoComplete, Select } from 'antd';
 import './dialog.css';
 import api from './api';
 import {
-  ApiOutlined, AppleOutlined, BgColorsOutlined, CheckCircleOutlined, ChromeOutlined, ClockCircleOutlined,
+  AndroidOutlined, ApiOutlined, AppleOutlined, BgColorsOutlined, CheckCircleOutlined, ChromeOutlined, ClockCircleOutlined,
   CodeOutlined, DesktopOutlined, EnvironmentOutlined, ExperimentOutlined, FileTextOutlined, FolderOpenOutlined,
   FontSizeOutlined, GlobalOutlined, IdcardOutlined, KeyOutlined, LinkOutlined, LinuxOutlined, LockOutlined,
   SafetyOutlined, SettingOutlined, SyncOutlined, TagsOutlined, ThunderboltOutlined, ToolOutlined, UserOutlined,
@@ -14,7 +14,7 @@ import { totpCode, secondsLeft } from './totp';
 import { countryFlag, proxyLocationText, versionLabel } from './format';
 import { KERNEL_ICONS } from './kernelIcons';
 import {
-  CPU_OPTIONS, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
+  ANDROID_DEVICES, CPU_OPTIONS, DEFAULT_ANDROID, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
   TZ_OPTIONS, VENDORS, WEBGL_OPTIONS, WEBGPU_OPTIONS, WEBRTC_OPTIONS,
   blankDraft, draftFromProfile, userAgentFor,
@@ -114,15 +114,18 @@ const OS_CHOICES = [
   { value: 'windows', label: 'Windows', icon: <WindowsOutlined style={{ color: '#4f9cf0' }} /> },
   { value: 'macos', label: 'macOS', icon: <AppleOutlined style={{ color: '#b6bcc9' }} /> },
   { value: 'linux', label: 'Linux', icon: <LinuxOutlined style={{ color: '#f4b400' }} /> },
+  { value: 'android', label: 'Android', icon: <AndroidOutlined style={{ color: '#3ddc84' }} /> },
 ];
 
-function OsPicker({ value, onChange }) {
+function OsPicker({ value, onChange, disabledValues = [] }) {
   return (
     <div className="pm-os" role="group">
       {OS_CHOICES.map((option) => (
         <button
           key={option.value}
           type="button"
+          disabled={disabledValues.includes(option.value)}
+          title={disabledValues.includes(option.value) ? 'Not available for this kernel' : undefined}
           className={value === option.value ? 'active' : ''}
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
@@ -301,6 +304,11 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         language: { ...base.fingerprint.language, mode: defaults.language === 'ip' ? 'ip' : 'real' },
         randomFingerprint: Boolean(defaults.randomFingerprint),
       };
+      if (base.os === 'android') {
+        const device = base.fingerprint.android;
+        base.fingerprint.screen = { ...base.fingerprint.screen, preset: `${device.width}x${device.height}` };
+        base.fingerprint.fonts = { mode: 'android' };
+      }
     }
     setDraft(base);
     setTab('general');
@@ -432,6 +440,39 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     });
   };
 
+  const androidDevice = (draft.fingerprint.android && draft.fingerprint.android.device) || DEFAULT_ANDROID.device;
+  const selectedAndroid = ANDROID_DEVICES.find((device) => device.id === androidDevice) || DEFAULT_ANDROID;
+
+  const changeOs = (value) => {
+    if (value !== 'android') {
+      const preset = SCREEN_PRESETS.some((item) => item.value === draft.fingerprint.screen.preset)
+        ? draft.fingerprint.screen.preset
+        : '1920x1080';
+      patch({ os: value, fingerprint: { ...draft.fingerprint, screen: { ...draft.fingerprint.screen, preset } } });
+      return;
+    }
+    patch({
+      os: value,
+      fingerprint: {
+        ...draft.fingerprint,
+        android: selectedAndroid,
+        fonts: { mode: 'android' },
+        screen: { ...draft.fingerprint.screen, mode: 'preset', preset: `${selectedAndroid.width}x${selectedAndroid.height}` },
+      },
+    });
+  };
+
+  const changeAndroidDevice = (id) => {
+    const device = ANDROID_DEVICES.find((item) => item.id === id) || DEFAULT_ANDROID;
+    patch({
+      fingerprint: {
+        ...draft.fingerprint,
+        android: device,
+        screen: { ...draft.fingerprint.screen, mode: 'preset', preset: `${device.width}x${device.height}` },
+      },
+    });
+  };
+
   const save = async () => {
     if (!draft.name.trim()) {
       setError('A profile needs a name');
@@ -547,9 +588,13 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     ['WebRTC', WEBRTC_OPTIONS.find((option) => option.value === fp.webRtc).label],
     ['Timezone', fp.timezone.mode === 'custom' ? fp.timezone.value : TZ_OPTIONS.find((option) => option.value === fp.timezone.mode).label],
     ['Language', fp.language.mode === 'custom' ? fp.language.value : LANGUAGE_OPTIONS.find((option) => option.value === fp.language.mode).label],
-    ['Screen', fp.screen.mode === 'custom' ? `${fp.screen.width} × ${fp.screen.height}` : fp.screen.mode === 'preset' ? fp.screen.preset.replace('x', ' × ') : 'Default'],
-    ['CPU / RAM', `${fp.hardware.cpu ? `${fp.hardware.cpu} cores` : 'real'} / ${fp.hardware.ram ? `${fp.hardware.ram} GB` : 'real'}`],
-    ['Fonts', fp.fonts.mode === 'default' ? 'Default' : fp.fonts.mode],
+    ['Screen', draft.os === 'android'
+      ? `${selectedAndroid.width} × ${selectedAndroid.height}`
+      : fp.screen.mode === 'custom' ? `${fp.screen.width} × ${fp.screen.height}` : fp.screen.mode === 'preset' ? fp.screen.preset.replace('x', ' × ') : 'Default'],
+    ['CPU / RAM', draft.os === 'android'
+      ? `${selectedAndroid.cpu} cores / ${selectedAndroid.ram} GB`
+      : `${fp.hardware.cpu ? `${fp.hardware.cpu} cores` : 'real'} / ${fp.hardware.ram ? `${fp.hardware.ram} GB` : 'real'}`],
+    ['Fonts', draft.os === 'android' ? 'android' : fp.fonts.mode === 'default' ? 'Default' : fp.fonts.mode],
     ['Proxy', draft.proxyMode === 'saved'
       ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
       : draft.hostPort || 'Direct'],
@@ -607,13 +652,17 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
             <PmSelect value={draft.browserVersion} options={versionOptions} onChange={(value) => patch({ browserVersion: value })} />
           </Field>
           <Field label="OS">
-            <OsPicker value={draft.os} onChange={(value) => patch({ os: value })} />
+            <OsPicker
+              value={draft.os}
+              onChange={changeOs}
+              disabledValues={draft.kernel === 'firefox' ? ['android'] : []}
+            />
           </Field>
           <Field label="User-Agent preset">
             <PmSelect
               value=""
               options={uaPresets}
-              onChange={(major) => patch({ uaValue: major ? userAgentFor(draft.os, major) : '' })}
+              onChange={(major) => patch({ uaValue: major ? userAgentFor(draft.os, major, draft.fingerprint.android) : '' })}
             />
           </Field>
           <Field label="Custom user-agent" span2 hint="Leave empty to use the browser's own user-agent and matching Client Hints.">
@@ -888,20 +937,38 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       <div className="pm-section">
         <div className="pm-section-title"><span className="pm-section-icon"><DesktopOutlined /></span>Display</div>
         <div className="pm-grid2">
-          <Field label="Screen resolution" span2>
-            <Seg value={fp.screen.mode} options={SCREEN_OPTIONS} onChange={(value) => patchFp({ screen: { ...fp.screen, mode: value } })} />
-            {fp.screen.mode === 'preset' && (
-              <div style={{ marginTop: 8, maxWidth: 220 }}>
-                <PmSelect value={fp.screen.preset} options={SCREEN_PRESETS} onChange={(value) => patchFp({ screen: { ...fp.screen, preset: value } })} />
-              </div>
-            )}
-            {fp.screen.mode === 'custom' && (
-              <div className="pm-row-tight" style={{ marginTop: 8 }}>
-                <input className="pm-input" inputMode="numeric" value={fp.screen.width} onChange={(event) => patchFp({ screen: { ...fp.screen, width: Number(event.target.value) || 0 } })} />
-                <input className="pm-input" inputMode="numeric" value={fp.screen.height} onChange={(event) => patchFp({ screen: { ...fp.screen, height: Number(event.target.value) || 0 } })} />
-              </div>
-            )}
-          </Field>
+          {draft.os === 'android' ? (
+            <Field
+              label="Android device"
+              span2
+              hint={`${selectedAndroid.width} × ${selectedAndroid.height} · DPR ${selectedAndroid.dpr} · Android ${selectedAndroid.androidVersion}. Mobile emulation is best effort: TLS and GPU capabilities still come from the desktop browser. Keep timezone, language and proxy country aligned.`}
+            >
+              <PmSelect
+                value={selectedAndroid.id}
+                options={ANDROID_DEVICES.map((device) => ({
+                  value: device.id,
+                  label: device.label,
+                  note: `${device.width}×${device.height} · DPR ${device.dpr}`,
+                }))}
+                onChange={changeAndroidDevice}
+              />
+            </Field>
+          ) : (
+            <Field label="Screen resolution" span2>
+              <Seg value={fp.screen.mode} options={SCREEN_OPTIONS} onChange={(value) => patchFp({ screen: { ...fp.screen, mode: value } })} />
+              {fp.screen.mode === 'preset' && (
+                <div style={{ marginTop: 8, maxWidth: 220 }}>
+                  <PmSelect value={fp.screen.preset} options={SCREEN_PRESETS} onChange={(value) => patchFp({ screen: { ...fp.screen, preset: value } })} />
+                </div>
+              )}
+              {fp.screen.mode === 'custom' && (
+                <div className="pm-row-tight" style={{ marginTop: 8 }}>
+                  <input className="pm-input" inputMode="numeric" value={fp.screen.width} onChange={(event) => patchFp({ screen: { ...fp.screen, width: Number(event.target.value) || 0 } })} />
+                  <input className="pm-input" inputMode="numeric" value={fp.screen.height} onChange={(event) => patchFp({ screen: { ...fp.screen, height: Number(event.target.value) || 0 } })} />
+                </div>
+              )}
+            </Field>
+          )}
           <Field label="Fonts" span2 hint="Pages probing document.fonts.check get the chosen platform's list.">
             <Seg value={fp.fonts.mode} options={FONT_OPTIONS} onChange={(value) => patchFp({ fonts: { mode: value } })} />
           </Field>

@@ -1,10 +1,11 @@
 const { OS_LIST } = require('./store');
+const { DEFAULT_ANDROID } = require('./android');
 
 // Chrome majors this app offers. The list is fixed on purpose: a profile can only pick a major
 // that Google publishes a Linux .deb for, and the newest matching build is resolved at launch.
 const MAJOR_OPTIONS = ['155', '154', '153', '152', '151', '150', '149', '148', '147', '146', '145', '144', '143', '142', '141'];
 
-const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android (emulated)' };
 
 // Font families a page can probe with document.fonts.check. A preset makes a profile answer like
 // the matching OS instead of echoing whatever this machine has installed.
@@ -27,17 +28,26 @@ const FONT_PRESETS = {
     'FreeSerif', 'Liberation Mono', 'Liberation Sans', 'Liberation Serif', 'Noto Sans', 'Noto Serif',
     'Times New Roman', 'Ubuntu', 'Verdana',
   ],
+  android: [
+    'Arial', 'Carrois Gothic', 'Coming Soon', 'Courier New', 'Cutive Mono', 'Dancing Script',
+    'Droid Sans', 'Droid Sans Mono', 'Noto Color Emoji', 'Noto Sans', 'Noto Sans CJK', 'Noto Serif',
+    'Roboto', 'Roboto Condensed', 'Roboto Mono', 'Times New Roman',
+  ],
 };
 
 // Client Hints metadata for a custom user-agent. Without it, Sec-CH-UA keeps reporting the real
 // binary and gives the spoof away.
-function uaMetadata({ userAgent = '', os = 'windows' } = {}) {
+function uaMetadata({ userAgent = '', os = 'windows', android = null } = {}) {
   const match = /Chrome\/([\d.]+)/.exec(userAgent) || [];
   const parts = (match[1] || '').split('.').filter(Boolean);
   const major = parts[0] || '151';
   const full = parts.length >= 3 ? match[1] : `${major}.0.0.0`;
-  const platform = os === 'macos' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows';
-  const platformVersion = os === 'macos' ? '14.0.0' : os === 'linux' ? '6.5.0' : '10.0.0';
+  const isAndroid = os === 'android';
+  const device = android || DEFAULT_ANDROID;
+  const platform = isAndroid ? 'Android' : os === 'macos' ? 'macOS' : os === 'linux' ? 'Linux' : 'Windows';
+  const platformVersion = isAndroid
+    ? device.platformVersion
+    : os === 'macos' ? '14.0.0' : os === 'linux' ? '6.5.0' : '10.0.0';
   return {
     brands: [
       { brand: 'Chromium', version: major },
@@ -52,17 +62,23 @@ function uaMetadata({ userAgent = '', os = 'windows' } = {}) {
     fullVersion: full,
     platform,
     platformVersion,
-    architecture: 'x86',
+    architecture: isAndroid ? 'arm' : 'x86',
     bitness: '64',
-    model: '',
-    mobile: false,
+    model: isAndroid ? device.model : '',
+    mobile: isAndroid,
     wow64: false,
+    ...(isAndroid ? { formFactors: ['Mobile'] } : {}),
   };
 }
 
 // A user-agent is a request header, so it is set with a Chromium flag and nothing needs injecting.
-function userAgentFor(os, major) {
+function userAgentFor(os, major, android = null) {
   const chrome = `${major || '151'}.0.0.0`;
+  if (os === 'android') {
+    // Chrome Android freezes the Android version and model in the UA; the real values are only
+    // available through Client Hints, which are set from the selected device below.
+    return `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Mobile Safari/537.36`;
+  }
   if (os === 'macos') {
     return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`;
   }
@@ -73,6 +89,7 @@ function userAgentFor(os, major) {
 }
 
 function platformFor(os) {
+  if (os === 'android') return 'Linux armv8l';
   if (os === 'macos') return 'MacIntel';
   if (os === 'linux') return 'Linux x86_64';
   return 'Win32';
@@ -106,11 +123,15 @@ function resolveFingerprint(fingerprint, { os = 'windows', major = null, geo = n
       ? { latitude: geo.latitude, longitude: geo.longitude }
       : null;
 
-  const screen = fingerprint.screen.mode === 'custom'
-    ? { width: fingerprint.screen.width, height: fingerprint.screen.height }
-    : fingerprint.screen.mode === 'preset'
-      ? parsePreset(fingerprint.screen.preset)
-      : null;
+  const device = fingerprint.android || DEFAULT_ANDROID;
+  const isAndroid = os === 'android';
+  const screen = isAndroid
+    ? { width: device.width, height: device.height, dpr: device.dpr }
+    : fingerprint.screen.mode === 'custom'
+      ? { width: fingerprint.screen.width, height: fingerprint.screen.height }
+      : fingerprint.screen.mode === 'preset'
+        ? parsePreset(fingerprint.screen.preset)
+        : null;
 
   return {
     timezone: tz,
@@ -120,6 +141,7 @@ function resolveFingerprint(fingerprint, { os = 'windows', major = null, geo = n
     location,
     screen,
     platform: platformFor(os),
+    mobile: isAndroid ? { ...device } : null,
   };
 }
 
@@ -165,17 +187,31 @@ function seededRandom(seed) {
 function buildInjectionScript({ fingerprint, resolved, seed = 1, native = false }) {
   // With the patched kernel the browser already spoofs platform, languages, fonts, WebRTC and the
   // CPU count, so this script only fills the gaps (screen, memory, geolocation, WebGPU).
+  const mobile = resolved.mobile || null;
+  const webgl = fingerprint.webgl.mode === 'custom'
+    ? { vendor: fingerprint.webgl.vendor, renderer: fingerprint.webgl.renderer }
+    : mobile ? { vendor: mobile.gpuVendor, renderer: mobile.gpuRenderer } : null;
+  const hardware = {
+    cpu: fingerprint.hardware.cpu || (mobile ? mobile.cpu : null),
+    ram: fingerprint.hardware.ram || (mobile ? mobile.ram : null),
+  };
+  const fontMode = fingerprint.fonts.mode === 'default' && mobile ? 'android' : fingerprint.fonts.mode;
   const config = {
     platform: native ? null : resolved.platform,
     language: native ? null : resolved.displayLanguage,
     languages: native ? [] : resolved.languages,
     screen: resolved.screen,
-    webgl: fingerprint.webgl.mode === 'custom' ? { vendor: fingerprint.webgl.vendor, renderer: fingerprint.webgl.renderer } : null,
+    webgl,
     webgpu: fingerprint.webgpu,
     webRtc: native ? 'forward' : fingerprint.webRtc,
     locationBlock: fingerprint.location.mode === 'block',
-    hardware: native ? { cpu: null, ram: fingerprint.hardware.ram } : fingerprint.hardware,
-    fonts: native || fingerprint.fonts.mode === 'default' ? null : FONT_PRESETS[fingerprint.fonts.mode],
+    hardware: native ? { cpu: null, ram: fingerprint.hardware.ram } : hardware,
+    fonts: native || fontMode === 'default' ? null : FONT_PRESETS[fontMode],
+    mobile: mobile ? {
+      maxTouchPoints: 5,
+      connection: { type: 'cellular', effectiveType: '4g', downlink: 10, rtt: 50, saveData: false },
+      battery: { charging: true, level: 0.87, chargingTime: 0 },
+    } : null,
     noise: fingerprint.noise,
     seed: seed >>> 0,
   };
@@ -200,6 +236,90 @@ function buildInjectionScript({ fingerprint, resolved, seed = 1, native = false 
       define(window, 'outerWidth', w); define(window, 'outerHeight', h);
     }
   } catch (e) {}
+  if (C.mobile) {
+    try { define(navigator, 'maxTouchPoints', C.mobile.maxTouchPoints); } catch (e) {}
+    for (const target of [window, document]) {
+      for (const key of ['ontouchstart', 'ontouchmove', 'ontouchend', 'ontouchcancel']) {
+        try { if (!(key in target)) define(target, key, null); } catch (e) {}
+      }
+    }
+    try { define(window, 'orientation', 0); } catch (e) {}
+    try {
+      if (!screen.orientation) {
+        define(screen, 'orientation', {
+          type: 'portrait-primary',
+          angle: 0,
+          onchange: null,
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() { return true; },
+        });
+      }
+    } catch (e) {}
+    try {
+      if (typeof navigator.vibrate !== 'function') define(navigator, 'vibrate', () => true);
+    } catch (e) {}
+    try {
+      const info = C.mobile.connection;
+      let conn = navigator.connection;
+      if (!conn) {
+        conn = new EventTarget();
+        define(navigator, 'connection', conn);
+      }
+      for (const key of Object.keys(info)) define(conn, key, info[key]);
+    } catch (e) {}
+    try {
+      define(navigator, 'getBattery', async () => {
+        const battery = new EventTarget();
+        const state = C.mobile.battery;
+        for (const key of Object.keys(state)) define(battery, key, state[key]);
+        define(battery, 'dischargingTime', Infinity);
+        return battery;
+      });
+    } catch (e) {}
+    try {
+      const md = navigator.mediaDevices;
+      if (md && md.enumerateDevices) {
+        const make = (kind, label, index) => {
+          const info = Object.create(window.MediaDeviceInfo ? MediaDeviceInfo.prototype : Object.prototype);
+          define(info, 'kind', kind);
+          define(info, 'label', label);
+          define(info, 'deviceId', 'android-' + C.seed.toString(16) + '-' + index);
+          define(info, 'groupId', 'android-group-' + C.seed.toString(16) + '-' + (index % 2));
+          return info;
+        };
+        md.enumerateDevices = async () => [
+          make('audioinput', '', 0),
+          make('audiooutput', '', 1),
+          make('audiooutput', '', 2),
+          make('videoinput', '', 3),
+          make('videoinput', '', 4),
+        ];
+      }
+    } catch (e) {}
+    try {
+      const nativeMatch = window.matchMedia;
+      if (typeof nativeMatch === 'function') {
+        window.matchMedia = function (query) {
+          const list = nativeMatch.call(window, query);
+          const q = String(query).toLowerCase();
+          let matches = null;
+          if (q.indexOf('pointer') !== -1) {
+            if (q.indexOf('coarse') !== -1) matches = true;
+            else if (q.indexOf('fine') !== -1) matches = false;
+          }
+          if (q.indexOf('hover') !== -1) {
+            if (q.indexOf('none') !== -1) matches = true;
+            else if (q.indexOf('hover') !== -1) matches = false;
+          }
+          if (matches !== null) {
+            try { Object.defineProperty(list, 'matches', { value: matches, configurable: true }); } catch (e) {}
+          }
+          return list;
+        };
+      }
+    } catch (e) {}
+  }
   if (C.webRtc === 'disabled') {
     try { delete window.RTCPeerConnection; } catch (e) { window.RTCPeerConnection = undefined; }
     try { delete window.RTCDataChannel; } catch (e) {}
@@ -270,8 +390,14 @@ function buildInjectionScript({ fingerprint, resolved, seed = 1, native = false 
       if (faces && faces.check) {
         const original = faces.check.bind(faces);
         faces.check = function (font, text) {
-          const family = String(font || '').split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+          // The first argument is a CSS font shorthand such as "16px Roboto", not only a family.
+          const shorthand = String(font || '');
+          const match = shorthand.match(/(?:^|\\s)(?:\\d+(?:\\.\\d+)?(?:px|pt|em|rem|%))\\s+(.+)$/);
+          const family = (match ? match[1] : shorthand).split(',')[0].replace(/["']/g, '').trim().toLowerCase();
           if (family && !allowed[family]) return false;
+          // Desktop Linux usually has no Roboto/Noto mobile families; the Android identity claims
+          // them so an availability probe does not expose the host system.
+          if (C.mobile) return true;
           return original(font, text);
         };
       }

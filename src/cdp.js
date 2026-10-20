@@ -86,6 +86,36 @@ async function applyOverrides(conn, sessionId, { script, emulation }) {
     await attempt('Page.enable', {});
     await attempt('Page.addScriptToEvaluateOnNewDocument', { source: script });
   }
+  if (emulation.mobile) {
+    const mobile = emulation.mobile;
+    await attempt('Emulation.setDeviceMetricsOverride', {
+      width: mobile.width,
+      height: mobile.height,
+      deviceScaleFactor: mobile.dpr,
+      mobile: true,
+      screenOrientation: { type: 'portraitPrimary', angle: 0 },
+    });
+    await attempt('Emulation.setTouchEmulationEnabled', {
+      enabled: true,
+      maxTouchPoints: mobile.maxTouchPoints || 5,
+    });
+    await attempt('Emulation.setEmitTouchEventsForMouse', {
+      enabled: true,
+      configuration: 'mobile',
+    });
+    // These feature names are accepted by Chromium's media emulation; unsupported builds simply
+    // keep the injected matchMedia fallback.
+    await attempt('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+        { name: 'any-pointer', value: 'coarse' },
+        { name: 'any-hover', value: 'none' },
+      ],
+    });
+    if (mobile.cpu) await attempt('Emulation.setHardwareConcurrencyOverride', { hardwareConcurrency: mobile.cpu });
+    if (mobile.ram) await attempt('Emulation.setDeviceMemoryOverride', { deviceMemory: mobile.ram });
+  }
   if (emulation.timezone) await attempt('Emulation.setTimezoneOverride', { timezoneId: emulation.timezone });
   if (emulation.locale) await attempt('Emulation.setLocaleOverride', { locale: emulation.locale });
   // Overriding the user-agent here (not only with a flag) also rewrites Sec-CH-UA, so the headers

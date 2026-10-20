@@ -467,3 +467,8 @@
 .pm-field .ant-select .ant-select-selection-item {
   color: var(--text);
 }
+
+.pm-os button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

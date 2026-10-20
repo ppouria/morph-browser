@@ -471,7 +471,12 @@ async function launchProfile(id) {
     // A profile with a version set gets that build from the shared cache, downloading it on first
     // use. A custom binary always wins, which is how forks without a download API are used.
     const kernel = profile.kernel || 'chrome';
-    const native = kernel === 'fingerprint';
+    if (kernel === 'firefox' && profile.os === 'android') {
+      throw new Error('Android emulation needs a Chromium kernel; pick Chrome, Chromium or Chrome for Testing.');
+    }
+    // The patched kernel has no Android platform mode, so Android profiles use the injected
+    // emulation even when the kernel is fingerprint-chromium.
+    const native = kernel === 'fingerprint' && profile.os !== 'android';
     // A macOS file picker returns the .app bundle; the binary inside it is what spawn needs.
     const customPath = profile.executablePath && process.platform === 'darwin'
       ? (resolveMacBundle(profile.executablePath) || profile.executablePath)
@@ -562,7 +567,7 @@ async function launchProfile(id) {
         ? null
         : profile.os === hostOs
           ? null
-          : userAgentFor(profile.os, uaMajor);
+          : userAgentFor(profile.os, uaMajor, profile.fingerprint.android);
     const acceptLanguages = [resolved.language, resolved.language.split('-')[0], 'en'].filter(Boolean).join(',');
     const preferenceFlags = [];
     if (profile.prefs.blockImages) preferenceFlags.push('--blink-settings=imagesEnabled=false');
@@ -592,7 +597,12 @@ async function launchProfile(id) {
       userAgent,
       acceptLanguage: native ? null : acceptLanguages,
       platform: resolved.platform,
-      userAgentMetadata: userAgent ? uaMetadata({ userAgent, os: profile.os }) : null,
+      userAgentMetadata: userAgent
+        ? uaMetadata({ userAgent, os: profile.os, android: profile.fingerprint.android })
+        : null,
+      mobile: resolved.mobile
+        ? { ...resolved.mobile, maxTouchPoints: 5 }
+        : null,
       geolocation: resolved.location
         ? { ...resolved.location, accuracy: profile.fingerprint.location.accuracy }
         : null,
@@ -610,7 +620,13 @@ async function launchProfile(id) {
       acceptLanguages: native ? null : acceptLanguages,
       windowSize: resolved.screen,
       webRtcFlags: native ? [] : flagsFor(profile.fingerprint),
-      extraFlags: [...preferenceFlags, ...kernelFlags, ...classFlags, ...splitLaunchArgs(profile.launchArgs)],
+      extraFlags: [
+        ...preferenceFlags,
+        ...(resolved.mobile ? ['--touch-events=enabled'] : []),
+        ...kernelFlags,
+        ...classFlags,
+        ...splitLaunchArgs(profile.launchArgs),
+      ],
       env: !native && resolved.timezone ? { TZ: resolved.timezone } : {},
     };
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can

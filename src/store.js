@@ -6,7 +6,7 @@ const { KERNELS } = require('./kernels');
 
 const PROXY_TYPES = ['http', 'https', 'socks5'];
 const THEMES = ['system', 'light', 'dark'];
-const OS_LIST = ['windows', 'macos', 'linux'];
+const OS_LIST = ['windows', 'macos', 'linux', 'android'];
 const UA_MODES = ['auto', 'custom'];
 const WEBRTC_MODES = ['forward', 'replace', 'real', 'disabled', 'proxy-udp'];
 const TZ_MODES = ['real', 'ip', 'custom'];
@@ -53,6 +53,8 @@ const VERSION_RE = /^[0-9][0-9A-Za-z._-]{0,30}$/;
 
 // Every profile carries a fingerprint block. The values decided here are applied at launch by
 // chromium.js (command line flags) and cdp.js (DevTools emulation and the injected script).
+const { DEFAULT_ANDROID, normalizeAndroid } = require('./android');
+
 const DEFAULT_FINGERPRINT = {
   webRtc: 'proxy-udp',
   timezone: { mode: 'real', value: 'UTC' },
@@ -65,6 +67,7 @@ const DEFAULT_FINGERPRINT = {
   hardware: { cpu: null, ram: null },
   fonts: { mode: 'default' },
   noise: { canvas: false, webglImage: false, audioContext: false, mediaDevice: true, clientRects: true, speechVoices: true },
+  android: DEFAULT_ANDROID,
   randomFingerprint: false,
 };
 
@@ -294,6 +297,7 @@ function normalizeFingerprint(input) {
     hardware: normalizeHardware(source.hardware),
     fonts: normalizeFonts(source.fonts),
     noise: normalizeNoise(source.noise, DEFAULT_FINGERPRINT),
+    android: normalizeAndroid(source.android),
     randomFingerprint: typeof source.randomFingerprint === 'boolean'
       ? source.randomFingerprint
       : DEFAULT_FINGERPRINT.randomFingerprint,

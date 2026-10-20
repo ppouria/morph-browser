@@ -11,9 +11,41 @@ export const OS_OPTIONS = [
   { value: 'windows', label: 'Windows' },
   { value: 'macos', label: 'macOS' },
   { value: 'linux', label: 'Linux' },
+  { value: 'android', label: 'Android (emulated)' },
 ];
 
-export const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+export const OS_LABELS = { windows: 'Windows', macos: 'macOS', linux: 'Linux', android: 'Android (emulated)' };
+
+// Kept in sync with src/android.js. The full device values are stored in the profile, so the
+// launch path only needs the stored object.
+export const ANDROID_DEVICES = [
+  {
+    id: 'pixel-8', label: 'Pixel 8 · Android 14', model: 'Pixel 8', androidVersion: '14', platformVersion: '14.0.0',
+    width: 412, height: 915, dpr: 2.625, gpuVendor: 'ARM', gpuRenderer: 'Mali-G715', cpu: 9, ram: 8,
+  },
+  {
+    id: 'pixel-8-pro', label: 'Pixel 8 Pro · Android 14', model: 'Pixel 8 Pro', androidVersion: '14', platformVersion: '14.0.0',
+    width: 448, height: 998, dpr: 2.625, gpuVendor: 'ARM', gpuRenderer: 'Mali-G715', cpu: 9, ram: 12,
+  },
+  {
+    id: 'pixel-7', label: 'Pixel 7 · Android 14', model: 'Pixel 7', androidVersion: '14', platformVersion: '14.0.0',
+    width: 412, height: 915, dpr: 2.625, gpuVendor: 'ARM', gpuRenderer: 'Mali-G710', cpu: 8, ram: 8,
+  },
+  {
+    id: 'galaxy-s24', label: 'Galaxy S24 · Android 14', model: 'SM-S921B', androidVersion: '14', platformVersion: '14.0.0',
+    width: 360, height: 780, dpr: 3, gpuVendor: 'Qualcomm', gpuRenderer: 'Adreno (TM) 750', cpu: 8, ram: 8,
+  },
+  {
+    id: 'galaxy-s23', label: 'Galaxy S23 · Android 13', model: 'SM-S911B', androidVersion: '13', platformVersion: '13.0.0',
+    width: 360, height: 780, dpr: 3, gpuVendor: 'Qualcomm', gpuRenderer: 'Adreno (TM) 740', cpu: 8, ram: 8,
+  },
+  {
+    id: 'xiaomi-13', label: 'Xiaomi 13 · Android 13', model: '2211133G', androidVersion: '13', platformVersion: '13.0.0',
+    width: 393, height: 873, dpr: 2.75, gpuVendor: 'Qualcomm', gpuRenderer: 'Adreno (TM) 740', cpu: 8, ram: 8,
+  },
+];
+
+export const DEFAULT_ANDROID = { ...ANDROID_DEVICES[0] };
 
 export const WEBRTC_OPTIONS = [
   { value: 'forward', label: 'Forward' },
@@ -62,6 +94,7 @@ export const FONT_OPTIONS = [
   { value: 'windows', label: 'Windows' },
   { value: 'macos', label: 'macOS' },
   { value: 'linux', label: 'Linux' },
+  { value: 'android', label: 'Android' },
 ];
 
 export const CPU_OPTIONS = [
@@ -135,6 +168,7 @@ export function blankFingerprint() {
     hardware: { cpu: null, ram: null },
     fonts: { mode: 'default' },
     noise: { canvas: false, webglImage: false, audioContext: false, mediaDevice: true, clientRects: true, speechVoices: true },
+    android: DEFAULT_ANDROID,
     randomFingerprint: false,
   };
 }
@@ -218,12 +252,16 @@ export function draftFromProfile(profile) {
       hardware: { ...base.hardware, ...(fp.hardware || {}) },
       fonts: { ...base.fonts, ...(fp.fonts || {}) },
       noise: { ...base.noise, ...(fp.noise || {}) },
+      android: { ...base.android, ...(fp.android || {}) },
     },
   };
 }
 
-export function userAgentFor(os, major) {
+export function userAgentFor(os, major, android = DEFAULT_ANDROID) {
   const chrome = `${major || '151'}.0.0.0`;
+  if (os === 'android') {
+    return `Mozilla/5.0 (Linux; Android ${android.androidVersion}; ${android.model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Mobile Safari/537.36`;
+  }
   if (os === 'macos') return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`;
   if (os === 'linux') return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`;
   return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chrome} Safari/537.36`;
