@@ -76,7 +76,8 @@ on the local machine: there is no account, no cloud sync and no team service.
   `host:port`, `host:port:user:pass`, `user:pass@host:port`, `socks5://user:pass@host:port`.
 - Saving or checking a proxy reads its exit IP, country, city and country code, and shows a flag.
 - A profile can have a fallback proxy. When the main proxy is unreachable at launch, the fallback is
-  used and a warning is shown.
+  used and a warning is shown. With **No fallback**, an unreachable proxy stops the launch instead of
+  opening the browser on the system route.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
 
@@ -84,8 +85,8 @@ on the local machine: there is no account, no cloud sync and no team service.
 
 - Settings can route every profile through one app-level HTTP, HTTPS or SOCKS5 proxy.
 - When a profile also has its own proxy, the two are chained: the browser connects to the app proxy
-  first, and the profile proxy is reached through it. A profile without a proxy uses the app proxy
-  directly.
+  first, and the profile proxy is reached through it. This applies to HTTP and HTTPS traffic alike,
+  not only to CONNECT tunnels. A profile without a proxy uses the app proxy directly.
 - The switch turns the chain off without deleting the saved proxy.
 - Proxy checks and saved-proxy location lookups use the same chain, except when checking the app
   proxy itself.
