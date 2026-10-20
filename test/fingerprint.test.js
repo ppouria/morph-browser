@@ -205,3 +205,29 @@ test('the native kernel script leaves platform and language to the browser', () 
   assert.match(script, /"fonts":null/);
   assert.match(script, /if \(C\.platform\)/);
 });
+
+test('android identities agree across the UA, Client Hints and display', () => {
+  const ua = userAgentFor('android', '155');
+  assert.match(ua, /Linux; Android 10; K/);
+  assert.match(ua, /Chrome\/155\.0\.0\.0 Mobile Safari/);
+
+  const meta = uaMetadata({ userAgent: ua, os: 'android' });
+  assert.equal(meta.platform, 'Android');
+  assert.equal(meta.mobile, true);
+  assert.equal(meta.model, 'Pixel 8');
+  assert.equal(meta.platformVersion, '14.0.0');
+  assert.equal(meta.architecture, 'arm');
+  assert.equal(meta.bitness, '64');
+
+  const fingerprint = normalizeFingerprint({ android: { device: 'galaxy-s24' } });
+  const resolved = resolveFingerprint(fingerprint, { os: 'android', major: '155' });
+  assert.equal(resolved.platform, 'Linux armv8l');
+  assert.deepEqual(resolved.screen, { width: 360, height: 780, dpr: 3 });
+  assert.equal(resolved.mobile.model, 'SM-S921B');
+
+  const script = buildInjectionScript({ fingerprint, resolved, seed: 9 });
+  assert.match(script, /maxTouchPoints/);
+  assert.match(script, /ontouchstart/);
+  assert.match(script, /matchMedia/);
+  assert.match(script, /Mali|Adreno/);
+});

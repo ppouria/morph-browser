@@ -445,3 +445,16 @@ test('the app-wide proxy is stored and can be disabled', () => {
   const cleared = store.setSettings({ upstreamProxy: { proxy: null } });
   assert.equal(cleared.upstreamProxy.proxy, null);
 });
+
+test('an android profile keeps its device and OS', () => {
+  const store = createStore(tmpDir());
+  const profile = store.saveProfile({
+    name: 'Android',
+    os: 'android',
+    fingerprint: { android: { device: 'galaxy-s23' } },
+  });
+  assert.equal(profile.os, 'android');
+  assert.equal(profile.fingerprint.android.device, 'galaxy-s23');
+  assert.equal(profile.fingerprint.android.model, 'SM-S911B');
+  assert.equal(store.getProfile(profile.id).fingerprint.android.width, 360);
+});
