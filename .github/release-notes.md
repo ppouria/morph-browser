@@ -4,9 +4,9 @@ This release fixes the profile ordering and keeps the 1.2.1 proxy fixes.
 
 ## Fixed
 
-- Profiles are sorted by the most recent activity. A newly created profile starts at the top, and
-  opening an older profile moves it above the rest. The Last opened column can still be sorted
-  manually.
+- Profiles are sorted newest-created first by default, so the last profile added is at the top. The
+  toolbar also has a **Recently used** option for ordering by the last launch. The Last opened
+  column no longer has a competing header sort.
 
 - **Plain HTTP no longer bypasses the app proxy.** HTTP requests were sent on a direct socket while
   HTTPS used the tunnel. Both now use the same app-proxy → profile-proxy chain.

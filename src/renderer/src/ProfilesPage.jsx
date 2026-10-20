@@ -32,6 +32,7 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState();
   const [tag, setTag] = useState();
+  const [sortBy, setSortBy] = useState('newest');
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
@@ -54,14 +55,17 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
         || (profile.notes || '').toLowerCase().includes(term)
         || (profile.tags || []).some((value) => value.toLowerCase().includes(term));
     });
-    // Most recent activity first: a newly opened profile jumps to the top, and a newly created
-    // profile starts at the top even before it is opened.
+    // Newest-created is the default. The toolbar can switch to recently used, which falls back to
+    // the creation time for a profile that has never been opened.
     const recency = (profile) => {
-      const time = Date.parse(profile.lastOpenedAt || profile.createdAt || '');
+      const value = sortBy === 'recent'
+        ? (profile.lastOpenedAt || profile.createdAt)
+        : profile.createdAt;
+      const time = Date.parse(value || '');
       return Number.isFinite(time) ? time : 0;
     };
     return filtered.sort((a, b) => recency(b) - recency(a) || (b.number || 0) - (a.number || 0));
-  }, [profiles, query, group, tag]);
+  }, [profiles, query, group, tag, sortBy]);
 
   const run = async (fn, success) => {
     try {
@@ -217,7 +221,6 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
       title: 'Last opened',
       dataIndex: 'lastOpenedAt',
       width: 115,
-      sorter: (a, b) => String(a.lastOpenedAt || '').localeCompare(String(b.lastOpenedAt || '')),
       render: (value) => (value ? <Text type="secondary">{dayjs(value).format('MMM D, HH:mm')}</Text> : <Text type="secondary">—</Text>),
     },
     showStatus && {
@@ -287,6 +290,15 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
         />
         <Select allowClear placeholder="All groups" style={{ width: 150 }} options={groups} value={group} onChange={setGroup} />
         <Select allowClear placeholder="All tags" style={{ width: 150 }} options={tags} value={tag} onChange={setTag} />
+        <Select
+          value={sortBy}
+          onChange={setSortBy}
+          style={{ width: 150 }}
+          options={[
+            { value: 'newest', label: 'Newest first' },
+            { value: 'recent', label: 'Recently used' },
+          ]}
+        />
         <Button type="primary" icon={<PlusOutlined />} onClick={onNew}>New profile</Button>
         <Tooltip title="Import profiles">
           <Button icon={<DownloadOutlined />} onClick={importProfiles} />
