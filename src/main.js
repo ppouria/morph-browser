@@ -374,7 +374,16 @@ function appProxy() {
 async function chooseProxy(profile, upstream = null) {
   if (!profile.proxy) return { proxy: null, fallback: null };
   const mode = profile.fallback?.mode || 'none';
-  if (mode === 'none') return { proxy: profile.proxy, fallback: null };
+
+  // With no fallback, an unreachable proxy must stop the launch. Never let Chromium fall back to
+  // the system route just because the proxy timed out.
+  if (mode === 'none') {
+    const reachable = await probeProxy(profile.proxy, 6000, { upstream });
+    if (!reachable) {
+      throw new Error(`Proxy for “${profile.name}” is unreachable and no fallback is configured. The profile was not launched.`);
+    }
+    return { proxy: profile.proxy, fallback: null };
+  }
 
   const reachable = await probeProxy(profile.proxy, 6000, { upstream });
   if (reachable) return { proxy: profile.proxy, fallback: null };
@@ -404,6 +413,7 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
   const version = uaVersion || profile.browserVersion || versions[0] || '128.0';
   const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo, autoGeo });
   const relay = upstream ? await startChain(upstream, proxy) : proxy ? await startRelay(proxy) : null;
+  if ((proxy || upstream) && !relay) throw new Error('Could not start the proxy relay; the profile was not launched.');
 
   try {
     const dir = profileDir(id);
@@ -602,6 +612,7 @@ async function launchProfile(id) {
     fs.mkdirSync(profileDir(id), { recursive: true });
     applyProfilePrefs(profileDir(id), profile.prefs);
     relay = upstream ? await startChain(upstream, chosen.proxy) : chosen.proxy ? await startRelay(chosen.proxy) : null;
+    if ((chosen.proxy || upstream) && !relay) throw new Error('Could not start the proxy relay; the profile was not launched.');
 
     const emulation = {
       timezone: native ? null : resolved.timezone,
