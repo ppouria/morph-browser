@@ -1,29 +1,16 @@
-# Morph Browser 1.2.2
+# Morph Browser 1.2.3
 
-This release fixes the profile ordering and keeps the 1.2.1 proxy fixes.
+This release adjusts what happens when a profile proxy is down and the fallback is **None**.
 
 ## Fixed
 
-- Profiles are sorted newest-created first by default, so the last profile added is at the top. The
-  toolbar also has a **Recently used** option for ordering by the last launch. The Last opened
-  column no longer has a competing header sort.
-
-- **Plain HTTP no longer bypasses the app proxy.** HTTP requests were sent on a direct socket while
-  HTTPS used the tunnel. Both now use the same app-proxy → profile-proxy chain.
-- **SOCKS5 chaining works on real proxies.** The handshake is now performed on the already-tunnelled
-  socket, so a SOCKS profile proxy reached through a SOCKS app proxy returns the profile exit IP
-  instead of the app-proxy IP.
-- **No fallback means no direct connection.** When a profile has no fallback and its proxy is
-  unreachable, the launch is stopped with a clear message. Chromium is never allowed to fall back to
-  the system route, and a failed relay aborts the launch.
-- Proxy checks use the same fixed chain, so checking a profile proxy now reflects what the browser
-  will actually use.
-
-## From 1.2.0
-
-- Proxy-aligned timezone, language, geolocation and `Accept-Language` from the exit country.
-- Randomized fingerprints for new profiles with OS-consistent GPUs, screens and noise.
-- Android emulation, per-profile fallback proxies and the app-wide proxy.
+- The browser now opens on the configured proxy even when that proxy is broken or times out. Every
+  request still goes through it, so pages fail as if there were no internet. Traffic is never sent on
+  the system route, and the launch is not blocked.
+- The proxy probe is only used to decide a configured fallback; it no longer aborts a no-fallback
+  profile.
+- This keeps the 1.2.1 fixes: plain HTTP and HTTPS both stay in the app-proxy → profile-proxy chain,
+  and proxy checks use the same chain.
 
 ## Limits
 
@@ -33,8 +20,8 @@ account. Do not use this project to bypass identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.2.2-windows-setup.exe` or portable
-- macOS: `morph-browser-1.2.2-macos-arm64.dmg` / `morph-browser-1.2.2-macos-x64.dmg`
-- Linux: `morph-browser-1.2.2-linux-x86_64.AppImage` or `morph-browser-1.2.2-linux-amd64.deb`
+- Windows: `morph-browser-1.2.3-windows-setup.exe` or portable
+- macOS: `morph-browser-1.2.3-macos-arm64.dmg` / `morph-browser-1.2.3-macos-x64.dmg`
+- Linux: `morph-browser-1.2.3-linux-x86_64.AppImage` or `morph-browser-1.2.3-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
