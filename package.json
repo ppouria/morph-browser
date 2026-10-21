@@ -1,6 +1,6 @@
 {
   "name": "morph-browser",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Morph Browser — run isolated browser profiles with their own data, proxy and fingerprint",
   "private": true,
   "main": "src/main.js",
