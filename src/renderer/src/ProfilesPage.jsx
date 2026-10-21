@@ -33,6 +33,7 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
   const [group, setGroup] = useState();
   const [tag, setTag] = useState();
   const [sortBy, setSortBy] = useState('newest');
+  const [opening, setOpening] = useState(() => new Set());
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
@@ -76,6 +77,22 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     } catch (err) {
       message.error(errorText(err));
       return false;
+    }
+  };
+
+  const openProfile = async (profile) => {
+    setOpening((current) => new Set(current).add(profile.id));
+    try {
+      await api.launchProfile(profile.id);
+      await onRefresh();
+    } catch (err) {
+      message.error(errorText(err));
+    } finally {
+      setOpening((current) => {
+        const next = new Set(current);
+        next.delete(profile.id);
+        return next;
+      });
     }
   };
 
@@ -236,18 +253,23 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
     {
       title: '',
       key: 'actions',
-      width: 135,
+      width: 160,
       align: 'right',
       render: (_, profile) => (
         <Space size={4}>
           <Tooltip title={profile.running ? 'Stop this browser' : 'Launch this profile'}>
             <Button
               size="small"
+              className={`profile-open${opening.has(profile.id) ? ' is-opening' : ''}`}
+              style={{ minWidth: 78, justifyContent: 'center' }}
               type={profile.running ? 'default' : 'primary'}
+              loading={opening.has(profile.id)}
               icon={profile.running ? <PoweroffOutlined /> : null}
-              onClick={() => run(() => (profile.running ? api.stopProfile(profile.id) : api.launchProfile(profile.id)))}
+              onClick={() => (profile.running
+                ? run(() => api.stopProfile(profile.id))
+                : openProfile(profile))}
             >
-              {profile.running ? 'Stop' : 'Open'}
+              {opening.has(profile.id) ? 'Opening' : profile.running ? 'Stop' : 'Open'}
             </Button>
           </Tooltip>
           <Tooltip title="Edit">

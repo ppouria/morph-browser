@@ -455,3 +455,12 @@ html[data-theme="dark"] {
 .dl-error {
   color: #f87171;
 }
+
+.profile-open.is-opening {
+  animation: profile-open-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes profile-open-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(84, 124, 255, 0.28); }
+  50% { box-shadow: 0 0 0 4px rgba(84, 124, 255, 0.08); }
+}
