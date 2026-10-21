@@ -294,3 +294,20 @@ test('plain HTTP through a SOCKS profile proxy stays in the tunnel', async (t) =
   assert.ok(log.some((line) => line === `app:CONNECT:127.0.0.1:${profilePort}`));
   assert.ok(log.some((line) => line === 'profile:CONNECT:203.0.113.1:80'));
 });
+
+test('a dead profile proxy never falls back to a direct connection', async (t) => {
+  let hits = 0;
+  const destination = http.createServer((req, res) => { hits += 1; res.end('direct'); });
+  const destPort = await listen(destination);
+  const chain = await startChain(
+    null,
+    { type: 'http', host: '127.0.0.1', port: 9 },
+  );
+  t.after(async () => {
+    await chain.close();
+    destination.close();
+  });
+  const answer = await getVia(chain.proxyServer, `http://127.0.0.1:${destPort}/never`);
+  assert.equal(answer.status, 502);
+  assert.equal(hits, 0);
+});
