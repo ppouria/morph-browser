@@ -80,6 +80,8 @@ on the local machine: there is no account, no cloud sync and no team service.
   proxy is down, pages fail as if there is no internet and traffic is never sent on the system route.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
+- Firefox's direct-failover preference is disabled, so a broken proxy behaves like no internet there
+  too and never switches to the system route.
 
 ## App proxy
 

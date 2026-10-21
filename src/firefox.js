@@ -154,6 +154,9 @@ function writePrefs(profileDir, { proxyServer, userAgent, languages, webRtc, blo
       ['network.proxy.ssl', hostname],
       ['network.proxy.ssl_port', Number(port)],
       ['network.proxy.share_proxy_settings', true],
+      // Firefox defaults to failover_direct=true. A broken proxy must not silently switch the
+      // profile to the system route; it should behave like no internet instead.
+      ['network.proxy.failover_direct', false],
       ['network.proxy.no_proxies_on', 'localhost, 127.0.0.1'],
     );
   }
