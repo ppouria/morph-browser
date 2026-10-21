@@ -76,8 +76,8 @@ on the local machine: there is no account, no cloud sync and no team service.
   `host:port`, `host:port:user:pass`, `user:pass@host:port`, `socks5://user:pass@host:port`.
 - Saving or checking a proxy reads its exit IP, country, city and country code, and shows a flag.
 - A profile can have a fallback proxy. When the main proxy is unreachable at launch, the fallback is
-  used and a warning is shown. With **No fallback**, an unreachable proxy stops the launch instead of
-  opening the browser on the system route.
+  used and a warning is shown. With **No fallback**, the browser still opens on that proxy; if the
+  proxy is down, pages fail as if there is no internet and traffic is never sent on the system route.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
 

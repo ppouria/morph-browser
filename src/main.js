@@ -375,15 +375,10 @@ async function chooseProxy(profile, upstream = null) {
   if (!profile.proxy) return { proxy: null, fallback: null };
   const mode = profile.fallback?.mode || 'none';
 
-  // With no fallback, an unreachable proxy must stop the launch. Never let Chromium fall back to
-  // the system route just because the proxy timed out.
-  if (mode === 'none') {
-    const reachable = await probeProxy(profile.proxy, 6000, { upstream });
-    if (!reachable) {
-      throw new Error(`Proxy for “${profile.name}” is unreachable and no fallback is configured. The profile was not launched.`);
-    }
-    return { proxy: profile.proxy, fallback: null };
-  }
+  // With no fallback, keep the broken proxy. The browser still opens, every request goes through
+  // this proxy, and a dead proxy simply looks like there is no internet. It never falls back to the
+  // system route.
+  if (mode === 'none') return { proxy: profile.proxy, fallback: null };
 
   const reachable = await probeProxy(profile.proxy, 6000, { upstream });
   if (reachable) return { proxy: profile.proxy, fallback: null };
