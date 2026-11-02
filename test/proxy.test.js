@@ -81,3 +81,30 @@ test('checkProxy reports a rejected login', async () => {
     upstream.close();
   }
 });
+
+test('the relay reports the bytes a profile used through its proxy', async () => {
+  const upstream = fakeLoginProxy('traffic-through-upstream');
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  let bytes = 0;
+  const relay = await startRelay(
+    { type: 'http', host: '127.0.0.1', port: upstream.address().port, ...LOGIN },
+    { onTraffic: (amount) => { bytes += amount; } },
+  );
+  try {
+    const { hostname, port } = new URL(relay.proxyServer);
+    await new Promise((resolve, reject) => {
+      const req = http.request(
+        { host: hostname, port, path: 'http://example.test/', headers: { Host: 'example.test', Connection: 'close' } },
+        (res) => { res.resume(); res.on('end', resolve); },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(bytes > 0, `expected relay traffic, got ${bytes}`);
+  } finally {
+    await relay.close();
+    upstream.closeAllConnections();
+    upstream.close();
+  }
+});

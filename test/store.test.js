@@ -468,3 +468,27 @@ test('geo alignment and fingerprint randomization settings are stored', () => {
   assert.equal(on.autoMatchGeo, true);
   assert.equal(on.randomizeNewProfile, true);
 });
+
+test('proxy usage is accumulated, kept on save, exported and reset', () => {
+  const store = createStore(tmpDir());
+  const profile = store.saveProfile({
+    name: 'Usage',
+    proxy: { type: 'http', host: 'proxy.example', port: 8000 },
+  });
+  const total = 1536 * 1024 * 1024; // 1.5 GB
+  store.addProxyUsages([[profile.id, total]]);
+  assert.equal(store.getProfile(profile.id).proxyUsageBytes, total);
+  assert.ok(store.getProfile(profile.id).proxyUsageUpdatedAt);
+
+  store.saveProfile({ ...store.getProfile(profile.id), name: 'Usage renamed' });
+  assert.equal(store.getProfile(profile.id).proxyUsageBytes, total);
+
+  const exported = store.exportProfiles([profile.id]);
+  assert.equal(exported.profiles[0].proxyUsageBytes, total);
+  const imported = store.importProfiles(exported);
+  assert.equal(imported[0].proxyUsageBytes, total);
+
+  assert.equal(store.resetProxyUsage(profile.id).proxyUsageBytes, 0);
+  assert.equal(store.getProfile(profile.id).proxyUsageBytes, 0);
+  assert.equal(store.getProfile(profile.id).proxyUsageUpdatedAt, null);
+});

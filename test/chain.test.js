@@ -311,3 +311,30 @@ test('a dead profile proxy never falls back to a direct connection', async (t) =
   assert.equal(answer.status, 502);
   assert.equal(hits, 0);
 });
+
+test('the chain reports uploaded and downloaded bytes', async (t) => {
+  const log = [];
+  const destination = http.createServer((req, res) => res.end('traffic-body'));
+  const destPort = await listen(destination);
+  const appProxy = mockProxy('app', log);
+  const appPort = await appProxy.listening;
+  const profileProxy = mockProxy('profile', log);
+  const profilePort = await profileProxy.listening;
+  let bytes = 0;
+  const chain = await startChain(
+    { type: 'http', host: '127.0.0.1', port: appPort },
+    { type: 'http', host: '127.0.0.1', port: profilePort },
+    { onTraffic: (amount) => { bytes += amount; } },
+  );
+  t.after(async () => {
+    await chain.close();
+    appProxy.server.close();
+    profileProxy.server.close();
+    destination.close();
+  });
+
+  const answer = await getVia(chain.proxyServer, `http://127.0.0.1:${destPort}/traffic`);
+  assert.equal(answer.body, 'traffic-body');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.ok(bytes > 0, `expected traffic bytes, got ${bytes}`);
+});
