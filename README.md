@@ -78,6 +78,9 @@ on the local machine: there is no account, no cloud sync and no team service.
 - A profile can have a fallback proxy. When the main proxy is unreachable at launch, the fallback is
   used and a warning is shown. With **No fallback**, the browser still opens on that proxy; if the
   proxy is down, pages fail as if there is no internet and traffic is never sent on the system route.
+- A profile with its own proxy records the upload and download bytes that go through it. The total is
+  shown in the **Traffic** column and can be reset in the profile editor. Traffic that only uses the
+  app-wide proxy, with no profile proxy, is not counted.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
 - Firefox's direct-failover preference is disabled, so a broken proxy behaves like no internet there

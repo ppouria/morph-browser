@@ -267,7 +267,7 @@ function sendGatewayError(res, err) {
 }
 
 // A local HTTP proxy that forwards every request through the app proxy and then the profile proxy.
-function startChain(upstream, proxy, { timeout = DEFAULT_TIMEOUT } = {}) {
+function startChain(upstream, proxy, { timeout = DEFAULT_TIMEOUT, onTraffic = null } = {}) {
   const sockets = new Set();
   const track = (socket) => {
     sockets.add(socket);
@@ -332,6 +332,17 @@ function startChain(upstream, proxy, { timeout = DEFAULT_TIMEOUT } = {}) {
       sendGatewayError(res, err);
     }
   });
+
+  if (onTraffic) {
+    server.on('connection', (socket) => {
+      const readStart = socket.bytesRead;
+      const writeStart = socket.bytesWritten;
+      socket.once('close', () => {
+        const bytes = (socket.bytesRead - readStart) + (socket.bytesWritten - writeStart);
+        if (bytes > 0) onTraffic(bytes);
+      });
+    });
+  }
 
   server.on('connect', async (req, client, head) => {
     track(client);

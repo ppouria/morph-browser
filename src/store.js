@@ -99,6 +99,12 @@ function normalizeFallback(input) {
   return { mode, proxy };
 }
 
+function normalizeUsageBytes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return Math.min(Math.round(number), 1e15);
+}
+
 function normalizeProxyLocation(location) {
   if (!location) return null;
   const countryCode = String(location.countryCode || '').toUpperCase();
@@ -369,6 +375,8 @@ function withDefaults(profile) {
     totp: profile.totp || null,
     number: Number.isInteger(profile.number) && profile.number > 0 ? profile.number : null,
     fallback: normalizeFallback(profile.fallback),
+    proxyUsageBytes: normalizeUsageBytes(profile.proxyUsageBytes),
+    proxyUsageUpdatedAt: profile.proxyUsageUpdatedAt || null,
     lastOpenedAt: profile.lastOpenedAt || null,
     lastTabs: Array.isArray(profile.lastTabs) ? profile.lastTabs.slice(0, 30) : [],
     deletedAt: profile.deletedAt || null,
@@ -441,6 +449,8 @@ function createStore(dir) {
       executablePath: normalizeExecutablePath(input.executablePath),
       proxy: normalizeProxy(input.proxy),
       fallback: normalizeFallback(input.fallback),
+      proxyUsageBytes: existing ? normalizeUsageBytes(existing.proxyUsageBytes) : normalizeUsageBytes(input.proxyUsageBytes),
+      proxyUsageUpdatedAt: existing ? existing.proxyUsageUpdatedAt || null : input.proxyUsageUpdatedAt || null,
       browserVersion: normalizeBrowserVersion(input.browserVersion),
       startUrls: normalizeStartUrls(input.startUrls),
       cookies: normalizeCookies(input.cookies),
@@ -514,6 +524,8 @@ function createStore(dir) {
         id: `p_${crypto.randomBytes(4).toString('hex')}`,
         number: data.nextNumber++,
         name: `${source.name} copy`.slice(0, 100),
+        proxyUsageBytes: 0,
+        proxyUsageUpdatedAt: null,
         lastOpenedAt: null,
         deletedAt: null,
         createdAt: new Date().toISOString(),
@@ -522,6 +534,32 @@ function createStore(dir) {
       data.profiles.push(copy);
       save(data);
       return copy;
+    },
+
+    // Proxy traffic is written in batches by the main process; one file write per flush.
+    addProxyUsages(entries) {
+      const data = load();
+      const changed = [];
+      for (const [id, bytes] of entries) {
+        const profile = data.profiles.find((p) => p.id === id);
+        const amount = normalizeUsageBytes(bytes);
+        if (!profile || !amount) continue;
+        profile.proxyUsageBytes = normalizeUsageBytes((profile.proxyUsageBytes || 0) + amount);
+        profile.proxyUsageUpdatedAt = new Date().toISOString();
+        changed.push(profile);
+      }
+      if (changed.length) save(data);
+      return changed;
+    },
+
+    resetProxyUsage(id) {
+      const data = load();
+      const profile = data.profiles.find((p) => p.id === id);
+      if (!profile) return null;
+      profile.proxyUsageBytes = 0;
+      profile.proxyUsageUpdatedAt = null;
+      save(data);
+      return profile;
     },
 
     // The tabs a profile had open are reused on its next launch.
@@ -720,6 +758,7 @@ module.exports = {
   createStore,
   normalizeProxy,
   normalizeProxyLocation,
+  normalizeUsageBytes,
   normalizeFallback,
   normalizeBrowserVersion,
   normalizeStartUrls,

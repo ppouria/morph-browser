@@ -97,6 +97,37 @@ function ensureDevDesktopEntry() {
 
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'chromium');
 const running = new Map(); // profile id -> { child, relay, cdp, debugPort, executable }
+
+const pendingUsage = new Map(); // profile id -> bytes waiting for the next store flush
+let usageTimer = null;
+
+// Proxy traffic arrives per closed connection, so it is batched before writing store.json.
+function flushProxyUsage() {
+  if (usageTimer) {
+    clearTimeout(usageTimer);
+    usageTimer = null;
+  }
+  if (!pendingUsage.size) return;
+  const entries = [...pendingUsage.entries()];
+  pendingUsage.clear();
+  try {
+    store.addProxyUsages(entries);
+    notify();
+  } catch (err) {
+    console.error('proxy usage:', err.message);
+  }
+}
+
+function trackProxyUsage(id, bytes) {
+  const amount = Math.round(Number(bytes) || 0);
+  if (amount <= 0) return;
+  pendingUsage.set(id, (pendingUsage.get(id) || 0) + amount);
+  if (!usageTimer) usageTimer = setTimeout(flushProxyUsage, 8000);
+}
+
+function proxyTrafficTracker(id) {
+  return (bytes) => trackProxyUsage(id, bytes);
+}
 const launching = new Set(); // ids still starting up; a download can make this take minutes
 let store;
 let kernels;
@@ -407,7 +438,10 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
   const versions = await kernels.listVersions('firefox').catch(() => []);
   const version = uaVersion || profile.browserVersion || versions[0] || '128.0';
   const resolved = resolveFingerprint(profile.fingerprint, { os: profile.os, major: version, geo, autoGeo });
-  const relay = upstream ? await startChain(upstream, proxy) : proxy ? await startRelay(proxy) : null;
+  const tracker = proxy ? proxyTrafficTracker(id) : null;
+  const relay = upstream
+    ? await startChain(upstream, proxy, { onTraffic: tracker })
+    : proxy ? await startRelay(proxy, { onTraffic: tracker }) : null;
   if ((proxy || upstream) && !relay) throw new Error('Could not start the proxy relay; the profile was not launched.');
 
   try {
@@ -455,7 +489,11 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
       if (err) console.error(`profile ${id}:`, err.message);
       if (running.get(id) !== entry) return;
       running.delete(id);
-      if (relay) relay.close().catch((error) => console.error(error));
+      if (relay) {
+        relay.close()
+          .catch((error) => console.error(error))
+          .finally(() => setTimeout(flushProxyUsage, 150));
+      }
       notify();
     };
     child.on('error', finish);
@@ -606,7 +644,10 @@ async function launchProfile(id) {
 
     fs.mkdirSync(profileDir(id), { recursive: true });
     applyProfilePrefs(profileDir(id), profile.prefs);
-    relay = upstream ? await startChain(upstream, chosen.proxy) : chosen.proxy ? await startRelay(chosen.proxy) : null;
+    const tracker = chosen.proxy ? proxyTrafficTracker(id) : null;
+    relay = upstream
+      ? await startChain(upstream, chosen.proxy, { onTraffic: tracker })
+      : chosen.proxy ? await startRelay(chosen.proxy, { onTraffic: tracker }) : null;
     if ((chosen.proxy || upstream) && !relay) throw new Error('Could not start the proxy relay; the profile was not launched.');
 
     const emulation = {
@@ -756,6 +797,13 @@ function setupIpc() {
 
   ipcMain.handle('profiles:launch', (_e, id) => launchProfile(id));
   ipcMain.handle('profiles:stop', (_e, id) => stopProfile(id));
+
+  ipcMain.handle('profiles:reset-usage', (_e, id) => {
+    flushProxyUsage();
+    const reset = store.resetProxyUsage(id);
+    notify();
+    return reset ? view(reset) : null;
+  });
 
   ipcMain.handle('profiles:trash', (_e, id) => {
     if (running.has(id)) throw new Error('stop the profile before deleting it');
@@ -1128,6 +1176,7 @@ if (!app.requestSingleInstanceLock()) {
   // Quitting the app closes every browser it started, so no orphaned Chromium keeps running.
   app.on('before-quit', () => {
     for (const id of running.keys()) stopProfile(id);
+    flushProxyUsage();
     if (checkServer) checkServer.close();
   });
 

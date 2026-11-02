@@ -62,3 +62,19 @@ export function proxyLocationText(proxy, { withCity = false } = {}) {
   if (withCity && location.city) parts.push(`· ${location.city}`);
   return parts.filter(Boolean).join(' ');
 }
+
+export function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${Math.max(0, Math.round(value))} B`;
+  const units = ['KB', 'MB', 'GB', 'TB', 'PB'];
+  let exponent = Math.floor(Math.log(value) / Math.log(1024));
+  let unit = Math.min(units.length - 1, Math.max(0, exponent - 1));
+  let amount = value / 1024 ** (unit + 1);
+  // 1048469 bytes is 1023.99 KB; show it as 1 MB instead of 1024 KB.
+  if (amount >= 1023.95 && unit < units.length - 1) {
+    unit += 1;
+    amount = value / 1024 ** (unit + 1);
+  }
+  const digits = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+  return `${amount.toFixed(digits).replace(/\.0+$/, '')} ${units[unit]}`;
+}

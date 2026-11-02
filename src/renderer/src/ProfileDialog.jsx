@@ -11,7 +11,7 @@ import {
   WindowsOutlined,
 } from '@ant-design/icons';
 import { totpCode, secondsLeft } from './totp';
-import { countryFlag, proxyLocationText, versionLabel } from './format';
+import { countryFlag, formatBytes, proxyLocationText, versionLabel } from './format';
 import { KERNEL_ICONS } from './kernelIcons';
 import {
   ANDROID_DEVICES, CPU_OPTIONS, DEFAULT_ANDROID, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_BY_OS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
@@ -285,6 +285,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [check, setCheck] = useState(null);
+  const [proxyUsage, setProxyUsage] = useState(0);
   const [rootEl, setRootEl] = useState(null);
   const [builds, setBuilds] = useState(majors);
   const nameRef = useRef(null);
@@ -318,6 +319,11 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     setError('');
     setCheck(null);
   }, [open, profile]);
+
+  useEffect(() => {
+    if (!open) return;
+    setProxyUsage(Number(profile && profile.proxyUsageBytes) || 0);
+  }, [open, profile && profile.id, profile && profile.proxyUsageBytes]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -480,6 +486,16 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     });
   };
 
+  const resetUsage = async () => {
+    if (!profile) return;
+    try {
+      await api.resetProxyUsage(profile.id);
+      setProxyUsage(0);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const save = async () => {
     if (!draft.name.trim()) {
       setError('A profile needs a name');
@@ -605,6 +621,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     ['Proxy', draft.proxyMode === 'saved'
       ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
       : draft.hostPort || 'Direct'],
+    ['Traffic', profile && profile.proxy ? formatBytes(proxyUsage) : '—'],
     ['Fallback', draft.fallbackMode === 'saved'
       ? (fallbackSavedProxy ? `${countryFlag(fallbackSavedProxy.location?.countryCode)} ${fallbackSavedProxy.name}`.trim() : 'choose one')
       : draft.fallbackMode === 'custom'
@@ -699,6 +716,23 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
 
   const proxyPane = (
     <>
+      {profile && (profile.proxy || proxyUsage > 0) && (
+        <div className="pm-section">
+          <div className="pm-section-title"><span className="pm-section-icon"><ApiOutlined /></span>Proxy traffic</div>
+          <div className="pm-grid2">
+            <Field
+              label="Total used"
+              span2
+              hint="Upload and download through this profile's proxy since the last reset."
+            >
+              <div className="pm-usage">
+                <span className="pm-usage-value">{formatBytes(proxyUsage)}</span>
+                <button type="button" className="pm-btn small" onClick={resetUsage}>Reset</button>
+              </div>
+            </Field>
+          </div>
+        </div>
+      )}
       <div className="pm-section">
         <div className="pm-section-title"><span className="pm-section-icon"><ApiOutlined /></span>Proxy source</div>
         <div className="pm-grid2">

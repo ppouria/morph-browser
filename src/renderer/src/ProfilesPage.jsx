@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from './api';
-import { chromeLabel, countryFlag, groupOptions } from './format';
+import { chromeLabel, countryFlag, formatBytes, groupOptions } from './format';
 
 const { Text } = Typography;
 
@@ -158,7 +158,8 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
   const showVersion = viewport.width >= 860;
   const showDetails = viewport.width >= 1000;
   const showProxy = viewport.width >= 1160;
-  const showLast = viewport.width >= 1440;
+  const showUsage = viewport.width >= 1440;
+  const showLast = viewport.width >= 1560;
   const showStatus = viewport.width >= 900;
   const rowHeight = density === 'small' ? 46 : 55;
   const pageSize = Math.max(4, Math.floor((viewport.height - 380) / rowHeight));
@@ -233,6 +234,18 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
           {proxy.location?.countryCode && <span className="proxy-country">{proxy.location.countryCode}</span>}
         </div>
       ) : <Text type="secondary">Direct</Text>),
+    },
+    showUsage && {
+      title: 'Traffic',
+      dataIndex: 'proxyUsageBytes',
+      width: 110,
+      render: (bytes, profile) => (profile.proxy ? (
+        <Tooltip title="Upload + download through this profile's proxy">
+          <Text style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+            {formatBytes(bytes)}
+          </Text>
+        </Tooltip>
+      ) : <Text type="secondary">—</Text>),
     },
     showLast && {
       title: 'Last opened',

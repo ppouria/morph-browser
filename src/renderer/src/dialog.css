@@ -472,3 +472,19 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.pm-usage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.pm-usage-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}

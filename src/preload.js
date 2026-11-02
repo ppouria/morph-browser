@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   clearCookies: (id) => ipcRenderer.invoke('profiles:clear-cookies', id),
   launchProfile: (id) => ipcRenderer.invoke('profiles:launch', id),
   stopProfile: (id) => ipcRenderer.invoke('profiles:stop', id),
+  resetProxyUsage: (id) => ipcRenderer.invoke('profiles:reset-usage', id),
   listProxies: () => ipcRenderer.invoke('proxies:list'),
   saveProxy: (input) => ipcRenderer.invoke('proxies:save', input),
   importProxies: (text, options) => ipcRenderer.invoke('proxies:import', text, options),

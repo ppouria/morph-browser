@@ -9,7 +9,7 @@ function upstreamUrl({ type, host, port, username, password }) {
 
 // Chromium gets a local proxy with no login. This relay adds the login when it talks to the real proxy,
 // so the password never reaches Chromium and no auth dialog pops up.
-async function startRelay(proxy) {
+async function startRelay(proxy, { onTraffic } = {}) {
   const upstream = upstreamUrl(proxy);
   const server = new Server({
     host: '127.0.0.1',
@@ -17,9 +17,19 @@ async function startRelay(proxy) {
     prepareRequestFunction: () => ({ upstreamProxyUrl: upstream }),
   });
   await server.listen();
+  if (onTraffic) {
+    // proxy-chain counts the client-facing socket, which is exactly the traffic the profile sent
+    // and received through its proxy.
+    server.on('connectionClosed', ({ stats }) => {
+      if (!stats) return;
+      const bytes = (stats.srcRxBytes || 0) + (stats.srcTxBytes || 0);
+      if (bytes > 0) onTraffic(bytes);
+    });
+  }
   return {
     proxyServer: `http://127.0.0.1:${server.port}`,
     close: () => server.close(true),
+    server,
   };
 }
 
