@@ -374,6 +374,8 @@ function withDefaults(profile) {
     launchArgs: profile.launchArgs || '',
     totp: profile.totp || null,
     number: Number.isInteger(profile.number) && profile.number > 0 ? profile.number : null,
+    noProxy: Boolean(profile.noProxy),
+    proxy: profile.noProxy ? null : profile.proxy,
     fallback: normalizeFallback(profile.fallback),
     proxyUsageBytes: normalizeUsageBytes(profile.proxyUsageBytes),
     proxyUsageUpdatedAt: profile.proxyUsageUpdatedAt || null,
@@ -436,6 +438,7 @@ function createStore(dir) {
 
   function toProfile(input, existing, data) {
     const now = new Date().toISOString();
+    const noProxy = input.noProxy === true;
     return {
       id: existing ? existing.id : `p_${crypto.randomBytes(4).toString('hex')}`,
       number: existing ? existing.number : data.nextNumber++,
@@ -447,7 +450,8 @@ function createStore(dir) {
       os: pickEnum(input.os, OS_LIST, 'windows', 'OS'),
       userAgent: normalizeUserAgent(input.userAgent),
       executablePath: normalizeExecutablePath(input.executablePath),
-      proxy: normalizeProxy(input.proxy),
+      proxy: noProxy ? null : normalizeProxy(input.proxy),
+      noProxy,
       fallback: normalizeFallback(input.fallback),
       proxyUsageBytes: existing ? normalizeUsageBytes(existing.proxyUsageBytes) : normalizeUsageBytes(input.proxyUsageBytes),
       proxyUsageUpdatedAt: existing ? existing.proxyUsageUpdatedAt || null : input.proxyUsageUpdatedAt || null,
@@ -610,7 +614,10 @@ function createStore(dir) {
         if (!wanted.has(profile.id)) continue;
         if ('group' in patch) profile.group = String(patch.group || '').trim().slice(0, 60);
         if ('tags' in patch) profile.tags = normalizeTags(patch.tags);
-        if ('proxy' in patch) profile.proxy = normalizeProxy(patch.proxy);
+        if ('proxy' in patch) {
+          profile.proxy = normalizeProxy(patch.proxy);
+          if (profile.proxy) profile.noProxy = false;
+        }
         if ('kernel' in patch) profile.kernel = pickEnum(patch.kernel, KERNELS, profile.kernel, 'kernel');
         if ('browserVersion' in patch) profile.browserVersion = normalizeBrowserVersion(patch.browserVersion);
         profile.updatedAt = new Date().toISOString();

@@ -5,7 +5,7 @@ import './dialog.css';
 import api from './api';
 import {
   AndroidOutlined, ApiOutlined, AppleOutlined, BgColorsOutlined, CheckCircleOutlined, ChromeOutlined, ClockCircleOutlined,
-  CodeOutlined, DesktopOutlined, EnvironmentOutlined, ExperimentOutlined, FileTextOutlined, FolderOpenOutlined,
+  CodeOutlined, DesktopOutlined, DisconnectOutlined, EnvironmentOutlined, ExperimentOutlined, FileTextOutlined, FolderOpenOutlined,
   FontSizeOutlined, GlobalOutlined, IdcardOutlined, KeyOutlined, LinkOutlined, LinuxOutlined, LockOutlined,
   SafetyOutlined, SettingOutlined, SyncOutlined, TagsOutlined, ThunderboltOutlined, ToolOutlined, UserOutlined,
   WindowsOutlined,
@@ -506,19 +506,28 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
     setError('');
     try {
       let proxy = null;
+      const noProxy = draft.proxyMode === 'none';
       if (draft.proxyMode === 'saved') {
         const saved = proxies.find((item) => item.id === draft.savedProxy);
-        if (saved) {
-          proxy = {
-            type: saved.type,
-            host: saved.host,
-            port: saved.port,
-            username: saved.username,
-            password: saved.password,
-            location: saved.location || null,
-          };
+        if (!saved) {
+          setError('Choose a saved proxy');
+          setTab('proxy');
+          return;
         }
-      } else if (draft.hostPort.trim()) {
+        proxy = {
+          type: saved.type,
+          host: saved.host,
+          port: saved.port,
+          username: saved.username,
+          password: saved.password,
+          location: saved.location || null,
+        };
+      } else if (draft.proxyMode === 'custom') {
+        if (!draft.hostPort.trim()) {
+          setError('Enter a proxy host or choose No proxy');
+          setTab('proxy');
+          return;
+        }
         const parsed = await api.parseProxy(draft.hostPort, draft.proxyType);
         proxy = {
           type: parsed.type,
@@ -588,6 +597,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
         prefs: draft.prefs,
         totp: draft.totpSecret.trim() ? { secret: draft.totpSecret.trim() } : null,
         proxy,
+        noProxy,
         fallback,
         fingerprint: draft.fingerprint,
       });
@@ -618,9 +628,13 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
       ? `${selectedAndroid.cpu} cores / ${selectedAndroid.ram} GB`
       : `${fp.hardware.cpu ? `${fp.hardware.cpu} cores` : 'real'} / ${fp.hardware.ram ? `${fp.hardware.ram} GB` : 'real'}`],
     ['Fonts', draft.os === 'android' ? 'android' : fp.fonts.mode === 'default' ? 'Default' : fp.fonts.mode],
-    ['Proxy', draft.proxyMode === 'saved'
-      ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
-      : draft.hostPort || 'Direct'],
+    ['Proxy', draft.proxyMode === 'none'
+      ? 'No proxy'
+      : draft.proxyMode === 'app'
+        ? 'App proxy'
+        : draft.proxyMode === 'saved'
+          ? (proxies.find((item) => item.id === draft.savedProxy) || {}).name || 'choose one'
+          : draft.hostPort || 'custom proxy'],
     ['Traffic', profile && profile.proxy ? formatBytes(proxyUsage) : '—'],
     ['Fallback', draft.fallbackMode === 'saved'
       ? (fallbackSavedProxy ? `${countryFlag(fallbackSavedProxy.location?.countryCode)} ${fallbackSavedProxy.name}`.trim() : 'choose one')
@@ -741,11 +755,23 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
               value={draft.proxyMode}
               onChange={(value) => patch({ proxyMode: value })}
               options={[
+                { value: 'none', label: 'No proxy', icon: <DisconnectOutlined /> },
+                { value: 'app', label: 'App proxy', icon: <GlobalOutlined /> },
                 { value: 'custom', label: 'Custom', icon: <ApiOutlined /> },
-                { value: 'saved', label: 'Saved proxy', icon: <LinkOutlined /> },
+                { value: 'saved', label: 'Saved', icon: <LinkOutlined /> },
               ]}
             />
           </Field>
+
+          {(draft.proxyMode === 'none' || draft.proxyMode === 'app') && (
+            <Field label="Routing" span2>
+              <div className="pm-hint">
+                {draft.proxyMode === 'none'
+                  ? 'Direct connection. This profile ignores the app-wide proxy.'
+                  : 'Uses the app-wide proxy when it is enabled; otherwise opens a direct connection.'}
+              </div>
+            </Field>
+          )}
 
           {draft.proxyMode === 'saved' ? (
             <Field
@@ -762,7 +788,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
                 placeholder="Choose a saved proxy"
               />
             </Field>
-          ) : (
+          ) : draft.proxyMode === 'custom' ? (
             <>
               <Field label="Type">
                 <PmSelect
@@ -803,7 +829,7 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
                 </div>
               </Field>
             </>
-          )}
+          ) : null}
 
           <Field label="Change IP URL" span2 hint="Called before every launch. A non-2xx answer stops the launch.">
             <input className="pm-input" value={draft.changeIpUrl} onChange={(event) => patch({ changeIpUrl: event.target.value })} spellCheck={false} placeholder="https://provider.example/rotate?key=…" />

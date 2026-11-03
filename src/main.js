@@ -489,11 +489,10 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
       if (err) console.error(`profile ${id}:`, err.message);
       if (running.get(id) !== entry) return;
       running.delete(id);
-      if (relay) {
-        relay.close()
-          .catch((error) => console.error(error))
-          .finally(() => setTimeout(flushProxyUsage, 150));
-      }
+      if (relay) relay.close().catch((error) => console.error(error));
+      // connectionClosed events follow the socket teardown; do not wait on relay.close() itself.
+      setTimeout(flushProxyUsage, 350);
+      setTimeout(flushProxyUsage, 1600);
       notify();
     };
     child.on('error', finish);
@@ -536,9 +535,10 @@ async function launchProfile(id) {
       : profile.executablePath;
     if (customPath && !fs.existsSync(customPath)) throw new Error(`The custom binary does not exist: ${customPath}`);
     if (kernel === 'firefox') {
-      const upstream = appProxy();
-      const chosen = await chooseProxy(profile, upstream);
-      if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
+      // A profile marked "No proxy" ignores the app-wide proxy and opens a direct connection.
+      const upstream = profile.noProxy ? null : appProxy();
+      const chosen = profile.noProxy ? { proxy: null, fallback: null } : await chooseProxy(profile, upstream);
+      if (profile.changeIpUrl && chosen.proxy && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
       const versions = await kernels.listVersions('firefox').catch(() => []);
       const firefoxVersion = profile.browserVersion || versions[0];
       let firefoxExecutable = customPath;
@@ -580,9 +580,9 @@ async function launchProfile(id) {
     }
     if (!executable) throw new Error('Chromium not found. Set its path in Settings.');
 
-    const upstream = appProxy();
-    const chosen = await chooseProxy(profile, upstream);
-    if (profile.changeIpUrl && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
+    const upstream = profile.noProxy ? null : appProxy();
+    const chosen = profile.noProxy ? { proxy: null, fallback: null } : await chooseProxy(profile, upstream);
+    if (profile.changeIpUrl && chosen.proxy && !chosen.fallback) await callChangeIp(profile.changeIpUrl);
 
     // "Based on IP" needs the exit IP's timezone and country; a failed lookup falls back to the
     // real system values instead of blocking the launch.
@@ -773,6 +773,8 @@ async function stopProfile(id) {
   if (urls) store.setLastTabs(id, urls);
   if (entry.cdp) entry.cdp.close();
   stop(entry.child);
+  setTimeout(flushProxyUsage, 500);
+  setTimeout(flushProxyUsage, 1800);
 }
 
 function setupIpc() {

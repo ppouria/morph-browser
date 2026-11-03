@@ -27,7 +27,7 @@ function errorText(err) {
     .replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
 }
 
-export default function ProfilesPage({ profiles, loading, density = 'middle', onNew, onEdit, onRefresh }) {
+export default function ProfilesPage({ profiles, loading, density = 'middle', appProxyEnabled = false, onNew, onEdit, onRefresh }) {
   const { message } = AntApp.useApp();
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState();
@@ -41,6 +41,10 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
   const viewport = useViewport();
 
   const groups = useMemo(() => groupOptions(profiles), [profiles]);
+  const totalProxyUsage = useMemo(
+    () => profiles.reduce((sum, profile) => sum + (Number(profile.proxyUsageBytes) || 0), 0),
+    [profiles],
+  );
   const tags = useMemo(() => [...new Set(profiles.flatMap((profile) => profile.tags || []))]
     .sort()
     .map((value) => ({ value, label: value })), [profiles]);
@@ -221,7 +225,7 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
       title: 'Proxy',
       dataIndex: 'proxy',
       width: 240,
-      render: (proxy) => (proxy ? (
+      render: (proxy, profile) => (proxy ? (
         <div
           className="proxy-cell"
           title={`${proxy.host}:${proxy.port}${proxy.location?.countryCode ? ` · ${proxy.location.country || ''}${proxy.location.city ? ` / ${proxy.location.city}` : ''}${proxy.location.ip ? ` · ${proxy.location.ip}` : ''}` : ''}`}
@@ -233,13 +237,17 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
           <span className="proxy-host">{proxy.host}:{proxy.port}</span>
           {proxy.location?.countryCode && <span className="proxy-country">{proxy.location.countryCode}</span>}
         </div>
-      ) : <Text type="secondary">Direct</Text>),
+      ) : (
+        <Text type="secondary">
+          {profile.noProxy ? 'No proxy' : appProxyEnabled ? 'App proxy' : 'Direct'}
+        </Text>
+      )),
     },
     showUsage && {
       title: 'Traffic',
       dataIndex: 'proxyUsageBytes',
       width: 110,
-      render: (bytes, profile) => (profile.proxy ? (
+      render: (bytes, profile) => (profile.proxy || bytes > 0 ? (
         <Tooltip title="Upload + download through this profile's proxy">
           <Text style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
             {formatBytes(bytes)}
@@ -360,6 +368,13 @@ export default function ProfilesPage({ profiles, loading, density = 'middle', on
           )}
         />
       )}
+
+      <Tooltip title="Total traffic recorded for profiles with their own proxy.">
+        <div className="profiles-summary">
+          <Text type="secondary">Total proxy traffic</Text>
+          <Text strong style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{formatBytes(totalProxyUsage)}</Text>
+        </div>
+      </Tooltip>
 
       <Table
         className="profiles-table"

@@ -363,6 +363,7 @@ function Shell() {
                   loading={loading}
                   majors={majors}
                   density={settings ? settings.density : 'middle'}
+                  appProxyEnabled={Boolean(settings && settings.upstreamProxy && settings.upstreamProxy.enabled && settings.upstreamProxy.proxy)}
                   onNew={() => openEditor(null)}
                   onEdit={openEditor}
                   onRefresh={refresh}

@@ -464,3 +464,18 @@ html[data-theme="dark"] {
   0%, 100% { box-shadow: 0 0 0 0 rgba(84, 124, 255, 0.28); }
   50% { box-shadow: 0 0 0 4px rgba(84, 124, 255, 0.08); }
 }
+
+.profiles-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  width: fit-content;
+  margin: 0 2px 10px auto;
+  padding: 5px 10px;
+  border: 1px solid rgba(127, 127, 127, 0.16);
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.06);
+  font-size: 12px;
+  cursor: default;
+}

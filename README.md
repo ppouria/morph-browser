@@ -80,7 +80,10 @@ on the local machine: there is no account, no cloud sync and no team service.
   proxy is down, pages fail as if there is no internet and traffic is never sent on the system route.
 - A profile with its own proxy records the upload and download bytes that go through it. The total is
   shown in the **Traffic** column and can be reset in the profile editor. Traffic that only uses the
-  app-wide proxy, with no profile proxy, is not counted.
+  app-wide proxy, with no profile proxy, is not counted. The Profiles page shows the combined total
+  for every tracked profile.
+- A profile can be set to **No proxy**. It then opens a direct connection and ignores the app-wide
+  proxy. **App proxy** means no profile proxy, but the app-wide proxy still applies when enabled.
 - A change-IP URL can be called before each launch.
 - Chromium connects to a local relay, so the proxy password is never passed to the browser.
 - Firefox's direct-failover preference is disabled, so a broken proxy behaves like no internet there
