@@ -1,23 +1,28 @@
-# Morph Browser 1.3.0
+# Morph Browser 1.4.0
 
-This release adds per-profile proxy traffic accounting.
+This release adds total proxy traffic and an explicit no-proxy mode.
 
 ## Added
 
-- Profiles with their own proxy now record the bytes uploaded and downloaded through it. The value
-  is shown in the **Traffic** column of the profile table, for example `1.5 GB`.
-- The profile editor's Proxy tab shows the total and a **Reset** button. Resetting only clears the
-  counter; it does not change the proxy or the profile.
-- Traffic is counted for both the normal relay and the app-proxy → profile-proxy chain, including
-  HTTPS bytes. Profiles that only use the app-wide proxy (without their own proxy) are not counted.
-- Counts are batched and persisted, so they survive restarts and follow the profile on export/import.
+- The Profiles page shows **Total proxy traffic**, the combined count for every profile with a
+  proxy, next to the table.
+- The profile editor now has four proxy modes:
+  - **No proxy** opens a direct connection and ignores the app-wide proxy.
+  - **App proxy** keeps no profile proxy but still uses the app-wide proxy when it is enabled.
+  - **Custom** and **Saved** use that proxy through the normal chain.
+- The table labels a no-proxy profile as **No proxy**, and shows **App proxy** for profiles that
+  inherit the app-wide proxy.
 
-## From 1.2.5
+## Fixed
 
-- Plain HTTP and HTTPS both stay in the app-proxy → profile-proxy chain.
-- A dead proxy with **No fallback** opens a browser that behaves like it has no internet and never
-  uses the system route (Chromium and Firefox).
-- Newest-created profile sorting and the animated Opening button.
+- Traffic recorded just before a profile stops is flushed within about half a second instead of
+  waiting for the next periodic write.
+
+## From 1.3.0
+
+- Per-profile traffic counters, the Traffic column, and the Reset button in the editor.
+- From 1.2.5: strict proxy chaining, no direct fallback for Chromium and Firefox, newest-first
+  sorting and the animated Opening button.
 
 ## Limits
 
@@ -27,8 +32,8 @@ account. Do not use this project to bypass identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.3.0-windows-setup.exe` or portable
-- macOS: `morph-browser-1.3.0-macos-arm64.dmg` / `morph-browser-1.3.0-macos-x64.dmg`
-- Linux: `morph-browser-1.3.0-linux-x86_64.AppImage` or `morph-browser-1.3.0-linux-amd64.deb`
+- Windows: `morph-browser-1.4.0-windows-setup.exe` or portable
+- macOS: `morph-browser-1.4.0-macos-arm64.dmg` / `morph-browser-1.4.0-macos-x64.dmg`
+- Linux: `morph-browser-1.4.0-linux-x86_64.AppImage` or `morph-browser-1.4.0-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
