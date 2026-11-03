@@ -492,3 +492,31 @@ test('proxy usage is accumulated, kept on save, exported and reset', () => {
   assert.equal(store.getProfile(profile.id).proxyUsageBytes, 0);
   assert.equal(store.getProfile(profile.id).proxyUsageUpdatedAt, null);
 });
+
+test('a no-proxy profile clears its proxy and keeps the setting on save', () => {
+  const store = createStore(tmpDir());
+  const profile = store.saveProfile({
+    name: 'Direct',
+    noProxy: true,
+    proxy: { type: 'http', host: 'proxy.example', port: 8000 },
+  });
+  assert.equal(profile.noProxy, true);
+  assert.equal(profile.proxy, null);
+
+  store.saveProfile({ ...store.getProfile(profile.id), name: 'Direct renamed' });
+  assert.equal(store.getProfile(profile.id).noProxy, true);
+  assert.equal(store.getProfile(profile.id).proxy, null);
+
+  const exported = store.exportProfiles([profile.id]);
+  const imported = store.importProfiles(exported);
+  assert.equal(imported[0].noProxy, true);
+  assert.equal(imported[0].proxy, null);
+
+  store.saveProfile({
+    ...store.getProfile(profile.id),
+    noProxy: false,
+    proxy: { type: 'socks5', host: 'proxy.example', port: 1080 },
+  });
+  assert.equal(store.getProfile(profile.id).noProxy, false);
+  assert.equal(store.getProfile(profile.id).proxy.type, 'socks5');
+});
