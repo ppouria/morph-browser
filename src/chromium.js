@@ -115,7 +115,7 @@ function buildArgs({
   }
   if (windowSize) {
     args.push(`--window-size=${windowSize.width},${windowSize.height}`);
-    args.push('--window-position=40,40');
+    args.push(`--window-position=${windowSize.x || 0},${windowSize.y || 0}`);
   }
   // Fill the current display without hiding the title bar or taskbar (windowed fullscreen). The
   // spoofed fingerprint screen stays untouched; this only controls the host window.
