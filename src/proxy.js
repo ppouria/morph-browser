@@ -1,6 +1,7 @@
 const http = require('node:http');
 const { Server } = require('proxy-chain');
 const { startChain } = require('./chain');
+const { timezoneForCountry } = require('./timezones');
 
 function upstreamUrl({ type, host, port, username, password }) {
   const auth = username ? `${encodeURIComponent(username)}:${encodeURIComponent(password)}@` : '';
@@ -120,38 +121,62 @@ async function lookupProxyLocation(proxy, { timeoutMs = 12000, upstream = null }
 // automatic proxy alignment. Two providers are tried because one may be blocked from some networks.
 // The result is not cached: rotating proxies can change country between launches, and a stale
 // timezone is worse than an extra lookup.
+function normalizeGeo({ timezone, countryCode, latitude, longitude }) {
+  const code = countryCode ? String(countryCode).toUpperCase() : null;
+  const zone = timezone || timezoneForCountry(code);
+  if (!zone && !code) return null;
+  return {
+    timezone: zone || null,
+    countryCode: code,
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+  };
+}
+
+function geoFromProxyLocation(proxy) {
+  const location = proxy && proxy.location;
+  if (!location || !location.countryCode) return null;
+  return normalizeGeo({ countryCode: location.countryCode });
+}
+
 async function lookupGeo(proxy, { timeoutMs = 5000, upstream = null } = {}) {
   if (!proxy) return null;
+  let value = null;
   try {
-    const value = await withProxy(proxy, upstream, async (relay) => {
-      try {
-        const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
-        const data = JSON.parse(body);
-        if (data.status === 'success' && data.timezone) {
-          return {
-            timezone: data.timezone,
-            countryCode: data.countryCode || null,
-            latitude: Number.isFinite(data.lat) ? data.lat : null,
-            longitude: Number.isFinite(data.lon) ? data.lon : null,
-          };
-        }
-      } catch {
-        // Fall through to the second provider.
+    value = await withProxy(proxy, upstream, async (relay) => {
+      // Both providers are queried in parallel. A provider may be blocked for one proxy while the
+      // other still answers, and waiting for each in turn would add several seconds to a launch.
+      const attempts = [
+        (async () => {
+          const body = await requestThroughRelay(relay, 'http://ip-api.com/json/?fields=status,countryCode,timezone,lat,lon', timeoutMs);
+          const data = JSON.parse(body);
+          if (data.status !== 'success') return null;
+          return normalizeGeo({ timezone: data.timezone, countryCode: data.countryCode, latitude: data.lat, longitude: data.lon });
+        })(),
+        (async () => {
+          const body = await requestThroughRelay(relay, 'http://ipwho.is/', timeoutMs);
+          const data = JSON.parse(body);
+          if (!data || data.success === false) return null;
+          return normalizeGeo({
+            timezone: data.timezone && data.timezone.id,
+            countryCode: data.country_code,
+            latitude: data.latitude,
+            longitude: data.longitude,
+          });
+        })(),
+      ];
+      const results = await Promise.allSettled(attempts);
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) return result.value;
       }
-      const body = await requestThroughRelay(relay, 'http://ipwho.is/', timeoutMs);
-      const data = JSON.parse(body);
-      if (!data || data.success === false) return null;
-      return {
-        timezone: data.timezone && data.timezone.id ? data.timezone.id : null,
-        countryCode: data.country_code || null,
-        latitude: Number.isFinite(data.latitude) ? data.latitude : null,
-        longitude: Number.isFinite(data.longitude) ? data.longitude : null,
-      };
+      return null;
     });
-    return value;
   } catch {
-    return null;
+    value = null;
   }
+  // If both IP providers are blocked by the proxy, the country recorded when the proxy was saved is
+  // still a much better answer than leaving the profile on the host timezone.
+  return value || geoFromProxyLocation(proxy);
 }
 
 module.exports = { startRelay, upstreamUrl, checkProxy, probeProxy, lookupGeo, lookupProxyLocation, requestThroughRelay };

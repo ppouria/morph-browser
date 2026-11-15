@@ -16,7 +16,7 @@ import { KERNEL_ICONS } from './kernelIcons';
 import {
   ANDROID_DEVICES, CPU_OPTIONS, DEFAULT_ANDROID, DISPLAY_OPTIONS, FONT_OPTIONS, GPU_BY_OS, GPU_PAIRS, LANGUAGE_OPTIONS, LOCATION_OPTIONS,
   NOISE_OPTIONS, OS_LABELS, RAM_OPTIONS, RENDERERS, SCREEN_OPTIONS, SCREEN_PRESETS,
-  TZ_OPTIONS, VENDORS, WEBGL_OPTIONS, WEBGPU_OPTIONS, WEBRTC_OPTIONS,
+  TIMEZONE_OPTIONS, TZ_OPTIONS, VENDORS, WEBGL_OPTIONS, WEBGPU_OPTIONS, WEBRTC_OPTIONS,
   blankDraft, draftFromProfile, randomizeFingerprint, userAgentFor,
 } from './profileOptions';
 
@@ -952,12 +952,14 @@ export default function ProfileDialog({ open, profile, profiles = [], proxies, m
           <Field label="Timezone" span2>
             <Seg value={fp.timezone.mode} options={TZ_OPTIONS} onChange={(value) => patchFp({ timezone: { ...fp.timezone, mode: value } })} />
             {fp.timezone.mode === 'custom' && (
-              <input
-                className="pm-input"
-                value={fp.timezone.value}
-                onChange={(event) => patchFp({ timezone: { ...fp.timezone, value: event.target.value } })}
-                placeholder="Asia/Tehran"
-                style={{ marginTop: 8 }}
+              <Select
+                showSearch
+                value={fp.timezone.value || undefined}
+                options={TIMEZONE_OPTIONS}
+                onChange={(value) => patchFp({ timezone: { ...fp.timezone, value } })}
+                placeholder="Search all timezones"
+                optionFilterProp="label"
+                style={{ width: '100%', marginTop: 8 }}
               />
             )}
           </Field>

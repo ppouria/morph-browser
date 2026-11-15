@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { startRelay, upstreamUrl, checkProxy } = require('../src/proxy');
+const { startRelay, upstreamUrl, checkProxy, lookupGeo } = require('../src/proxy');
 
 test('encodes proxy login characters in the upstream url', () => {
   const url = upstreamUrl({ type: 'socks5', host: 'h', port: 1080, username: 'a@b', password: 'p:w' });
@@ -107,4 +107,15 @@ test('the relay reports the bytes a profile used through its proxy', async () =>
     upstream.closeAllConnections();
     upstream.close();
   }
+});
+
+test('geo lookup falls back to the saved proxy country when providers are blocked', async () => {
+  const geo = await lookupGeo({
+    type: 'http',
+    host: '127.0.0.1',
+    port: 9,
+    location: { countryCode: 'DE' },
+  });
+  assert.equal(geo.timezone, 'Europe/Berlin');
+  assert.equal(geo.countryCode, 'DE');
 });

@@ -61,6 +61,18 @@ export const TZ_OPTIONS = [
   { value: 'custom', label: 'Custom' },
 ];
 
+// The browser's own IANA database is the complete list, and it follows OS updates automatically.
+export const TIMEZONE_OPTIONS = (() => {
+  let values = [];
+  try {
+    values = Intl.supportedValuesOf('timeZone');
+  } catch {
+    values = [];
+  }
+  const zones = [...new Set(['UTC', ...values])].sort();
+  return zones.map((value) => ({ value, label: value }));
+})();
+
 export const LOCATION_OPTIONS = [
   { value: 'real', label: 'Real' },
   { value: 'ip', label: 'Based on IP' },
