@@ -1,28 +1,22 @@
-# Morph Browser 1.4.0
+# Morph Browser 1.5.0
 
-This release adds total proxy traffic and an explicit no-proxy mode.
-
-## Added
-
-- The Profiles page shows **Total proxy traffic**, the combined count for every profile with a
-  proxy, next to the table.
-- The profile editor now has four proxy modes:
-  - **No proxy** opens a direct connection and ignores the app-wide proxy.
-  - **App proxy** keeps no profile proxy but still uses the app-wide proxy when it is enabled.
-  - **Custom** and **Saved** use that proxy through the normal chain.
-- The table labels a no-proxy profile as **No proxy**, and shows **App proxy** for profiles that
-  inherit the app-wide proxy.
+This release fixes the GitHub timezone issue and opens profiles fullscreen.
 
 ## Fixed
 
-- Traffic recorded just before a profile stops is flushed within about half a second instead of
-  waiting for the next periodic write.
+- **Timezone "Based on IP"** now resolves the proxy country reliably:
+  - both IP geo providers are queried in parallel, so a provider blocked by one proxy no longer costs a
+    long wait;
+  - when both are blocked, the country saved with the proxy is used (`DE` → `Europe/Berlin`);
+  - provider timezone strings are validated before reaching Chromium.
+- **Custom timezone** now has a searchable list of every IANA timezone instead of a free-text field.
+- Profiles open **fullscreen**: Chromium uses `--start-fullscreen`, Firefox opens in kiosk mode.
 
-## From 1.3.0
+## From 1.4.0
 
-- Per-profile traffic counters, the Traffic column, and the Reset button in the editor.
-- From 1.2.5: strict proxy chaining, no direct fallback for Chromium and Firefox, newest-first
-  sorting and the animated Opening button.
+- Total proxy traffic on the Profiles page and per-profile traffic counters with reset.
+- Explicit **No proxy** mode that ignores the app-wide proxy, plus App proxy / Custom / Saved modes.
+- Newest-first sorting, the animated Opening button, and strict proxy chaining with no direct fallback.
 
 ## Limits
 
@@ -32,8 +26,8 @@ account. Do not use this project to bypass identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.4.0-windows-setup.exe` or portable
-- macOS: `morph-browser-1.4.0-macos-arm64.dmg` / `morph-browser-1.4.0-macos-x64.dmg`
-- Linux: `morph-browser-1.4.0-linux-x86_64.AppImage` or `morph-browser-1.4.0-linux-amd64.deb`
+- Windows: `morph-browser-1.5.0-windows-setup.exe` or portable
+- macOS: `morph-browser-1.5.0-macos-arm64.dmg` / `morph-browser-1.5.0-macos-x64.dmg`
+- Linux: `morph-browser-1.5.0-linux-x86_64.AppImage` or `morph-browser-1.5.0-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
