@@ -176,7 +176,7 @@ function firefoxUserAgent(os, version) {
 }
 
 function buildArgs({ profileDir, startUrls = [], windowSize }) {
-  const args = ['-profile', profileDir, '-no-remote', '-kiosk'];
+  const args = ['-profile', profileDir, '-no-remote'];
   if (windowSize) args.push('-width', String(windowSize.width), '-height', String(windowSize.height));
   return args.concat(startUrls);
 }

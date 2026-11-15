@@ -471,7 +471,7 @@ async function launchFirefoxProfile(id, profile, executable, proxy, uaVersion = 
     const args = buildFirefoxArgs({
       profileDir: dir,
       startUrls,
-      windowSize: profile.fingerprint.screen.mode === 'custom' ? resolved.screen : null,
+      windowSize: screen.getPrimaryDisplay().workAreaSize,
     });
     const child = spawn(executable, [...args, '--remote-debugging-port', String(debugPort)], {
       env: {
@@ -677,7 +677,7 @@ async function launchProfile(id) {
       startUrls: [],
       userAgent,
       acceptLanguages: native ? null : acceptLanguages,
-      windowSize: resolved.screen,
+      windowSize: screen.getPrimaryDisplay().workAreaSize,
       webRtcFlags: native ? [] : flagsFor(profile.fingerprint),
       extraFlags: [
         ...preferenceFlags,

@@ -44,9 +44,10 @@ test('returns null when no browser is installed', () => {
   assert.equal(findChromium({ platform: 'darwin', env: {}, exists: () => false }), null);
 });
 
-test('profiles open fullscreen', () => {
+test('profiles open maximized to the display, not in fullscreen mode', () => {
   const args = buildArgs({ profileDir: '/data/p_1', debugPort: 9222 });
-  assert.ok(args.includes('--start-fullscreen'));
+  assert.ok(args.includes('--start-maximized'));
+  assert.ok(!args.includes('--start-fullscreen'));
 });
 
 test('each profile gets its own user-data-dir, debug port and proxy', () => {
