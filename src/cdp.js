@@ -140,7 +140,7 @@ async function applyOverrides(conn, sessionId, { script, emulation }) {
 // Connects, installs the overrides on every page (including tabs opened later), sets cookies and
 // opens the start URLs. The connection stays open for the life of the profile: closing it would
 // detach the page sessions and let new tabs start without the fingerprint.
-async function prepareBrowser(port, { cookies = [], startUrls = [], script = '', emulation = {} }) {
+async function prepareBrowser(port, { cookies = [], startUrls = [], script = '', emulation = {}, extensions = [] }) {
   const wsUrl = await waitForBrowser(port);
   const conn = await openConnection(wsUrl);
   const pendingUrls = new Map();
@@ -169,6 +169,16 @@ async function prepareBrowser(port, { cookies = [], startUrls = [], script = '',
   try {
     for (const origin of emulation.grantGeolocation || []) {
       await conn.send('Browser.grantPermissions', { origin, permissions: ['geolocation'] }).catch(() => {});
+    }
+
+    // Unpacked extensions are loaded through the DevTools Extensions domain. Google Chrome ignores
+    // --load-extension since Chrome 137, so this is the only path that works for system Chrome too.
+    for (const extension of extensions) {
+      try {
+        await conn.send('Extensions.loadUnpacked', { path: extension.path });
+      } catch (err) {
+        console.error(`extension ${extension.name || extension.path}: ${err.message}`);
+      }
     }
 
     // waitForDebuggerOnStart pauses each new page just long enough to install the overrides.

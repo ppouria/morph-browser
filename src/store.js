@@ -361,6 +361,23 @@ function requireText(value, label, max) {
   return text;
 }
 
+function normalizeExtension(entry) {
+  const source = entry || {};
+  const id = String(source.id || '').trim();
+  const name = String(source.name || '').trim();
+  const extensionPath = String(source.path || '').trim();
+  if (!id || !name || !extensionPath) return null;
+  return {
+    id,
+    name,
+    version: String(source.version || '').trim() || '1.0.0',
+    path: extensionPath,
+    enabled: source.enabled !== false,
+    builtin: Boolean(source.builtin),
+    addedAt: source.addedAt || new Date().toISOString(),
+  };
+}
+
 // Older store files predate the newer fields, so a load fills them in without rejecting the file.
 function withDefaults(profile) {
   return {
@@ -397,13 +414,14 @@ function createStore(dir) {
       parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
     } catch (err) {
       if (err.code === 'ENOENT') {
-        return { profiles: [], proxies: [], settings: { ...DEFAULT_SETTINGS }, nextNumber: 1 };
+        return { profiles: [], proxies: [], extensions: [], settings: { ...DEFAULT_SETTINGS }, nextNumber: 1 };
       }
       throw err;
     }
     const data = {
       profiles: (parsed.profiles || []).map(withDefaults),
       proxies: parsed.proxies || [],
+      extensions: (parsed.extensions || []).map(normalizeExtension).filter(Boolean),
       settings: {
         ...DEFAULT_SETTINGS,
         ...(parsed.settings || {}),
@@ -472,6 +490,57 @@ function createStore(dir) {
   }
 
   return {
+    listExtensions() {
+      return load().extensions;
+    },
+
+    // Built-in extensions are refreshed on every launch so an update can ship a new manifest/path
+    // without losing the user's enabled/disabled choice.
+    ensureExtension(entry) {
+      const data = load();
+      const normalized = normalizeExtension(entry);
+      if (!normalized) throw new Error('invalid extension');
+      const existing = data.extensions.find((item) => item.id === normalized.id);
+      if (existing) {
+        existing.name = normalized.name;
+        existing.version = normalized.version;
+        existing.path = normalized.path;
+        existing.builtin = normalized.builtin;
+      } else {
+        data.extensions.push(normalized);
+      }
+      save(data);
+      return data.extensions.find((item) => item.id === normalized.id);
+    },
+
+    addExtension(entry) {
+      const data = load();
+      const normalized = normalizeExtension(entry);
+      if (!normalized) throw new Error('invalid extension');
+      data.extensions.push(normalized);
+      save(data);
+      return normalized;
+    },
+
+    setExtensionEnabled(id, enabled) {
+      const data = load();
+      const extension = data.extensions.find((item) => item.id === id);
+      if (!extension) throw new Error('extension not found');
+      extension.enabled = Boolean(enabled);
+      save(data);
+      return extension;
+    },
+
+    removeExtension(id) {
+      const data = load();
+      const extension = data.extensions.find((item) => item.id === id);
+      if (!extension) return null;
+      if (extension.builtin) throw new Error('built-in extensions can only be disabled');
+      data.extensions = data.extensions.filter((item) => item.id !== id);
+      save(data);
+      return extension;
+    },
+
     listProfiles() {
       return load().profiles.filter((profile) => !profile.deletedAt);
     },

@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Morph Traffic Saver",
+  "version": "1.0.0",
+  "description": "Blocks ad and tracker requests, pauses autoplay and stops background media to reduce proxy usage.",
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "trackers",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

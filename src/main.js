@@ -395,6 +395,38 @@ function notifyNotice(text, level = 'warning') {
   if (win && !win.isDestroyed()) win.webContents.send('profiles:notice', { text, level });
 }
 
+const BUILTIN_EXTENSIONS = [
+  { id: 'builtin-traffic-saver', dir: 'traffic-saver' },
+  { id: 'builtin-tab-snoozer', dir: 'tab-snoozer' },
+];
+
+function builtinExtensionsRoot() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'extensions')
+    : path.join(__dirname, '..', 'extensions');
+}
+
+// Built-ins are seeded once and then kept in the store: updating the app refreshes their path and
+// version without resetting a user's enabled/disabled choice.
+function seedBuiltinExtensions() {
+  for (const item of BUILTIN_EXTENSIONS) {
+    try {
+      const dir = path.join(builtinExtensionsRoot(), item.dir);
+      const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+      store.ensureExtension({
+        id: item.id,
+        name: manifest.name,
+        version: manifest.version,
+        path: dir,
+        enabled: true,
+        builtin: true,
+      });
+    } catch (err) {
+      console.error(`built-in extension ${item.id}:`, err.message);
+    }
+  }
+}
+
 function appProxy() {
   const setting = store.getSettings().upstreamProxy;
   return setting && setting.enabled && setting.proxy ? setting.proxy : null;
@@ -670,6 +702,10 @@ async function launchProfile(id) {
         : [],
     };
 
+    const extensions = store.listExtensions()
+      .filter((extension) => extension.enabled && fs.existsSync(path.join(extension.path, 'manifest.json')))
+      .map(({ id: extensionId, name, path: extensionPath }) => ({ id: extensionId, name, path: extensionPath }));
+
     const launchOptions = {
       executable,
       profileDir: profileDir(id),
@@ -686,6 +722,7 @@ async function launchProfile(id) {
         ...classFlags,
         ...splitLaunchArgs(profile.launchArgs),
       ],
+      extensionDebugging: extensions.length > 0,
       env: !native && resolved.timezone ? { TZ: resolved.timezone } : {},
     };
     // The check page comes first, like AdsPower's, so the exit IP and the services the profile can
@@ -702,7 +739,7 @@ async function launchProfile(id) {
       if (startUrls.length >= 12) break;
       if (!startUrls.includes(url) && !isCheckUrl(url)) startUrls.push(url);
     }
-    const prepareOptions = { cookies: profile.cookies, startUrls, script, emulation };
+    const prepareOptions = { cookies: profile.cookies, startUrls, script, emulation, extensions };
 
     // Start URLs always open over DevTools, never on the command line: the first page has to wait
     // for the cookies and the injected script.
@@ -876,6 +913,55 @@ function setupIpc() {
     }
     store.saveProfile({ ...store.getProfile(id), cookies: [] });
     notify();
+  });
+
+  ipcMain.handle('extensions:list', () => store.listExtensions());
+
+  ipcMain.handle('extensions:add', async () => {
+    const options = {
+      title: 'Choose an unpacked extension folder',
+      properties: ['openDirectory'],
+    };
+    const result = win && !win.isDestroyed()
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    const source = result.filePaths[0];
+    let manifest;
+    try {
+      manifest = JSON.parse(fs.readFileSync(path.join(source, 'manifest.json'), 'utf8'));
+    } catch {
+      throw new Error('That folder does not contain a valid manifest.json');
+    }
+    if (!manifest || !manifest.name || !manifest.version) {
+      throw new Error('The extension manifest needs a name and a version');
+    }
+    const id = `ext_${crypto.randomBytes(4).toString('hex')}`;
+    const destination = path.join(app.getPath('userData'), 'extensions', id);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.cpSync(source, destination, { recursive: true });
+    try {
+      const extension = store.addExtension({
+        id,
+        name: String(manifest.name).slice(0, 100),
+        version: String(manifest.version).slice(0, 40),
+        path: destination,
+        enabled: true,
+        builtin: false,
+      });
+      return extension;
+    } catch (err) {
+      fs.rmSync(destination, { recursive: true, force: true });
+      throw err;
+    }
+  });
+
+  ipcMain.handle('extensions:set-enabled', (_e, id, enabled) => store.setExtensionEnabled(id, enabled));
+
+  ipcMain.handle('extensions:remove', (_e, id) => {
+    const removed = store.removeExtension(id);
+    if (removed) fs.rmSync(removed.path, { recursive: true, force: true });
+    return Boolean(removed);
   });
 
   ipcMain.handle('proxies:list', () => store.listProxies());
@@ -1187,6 +1273,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     ensureDevDesktopEntry();
     store = createStore(app.getPath('userData'));
+    seedBuiltinExtensions();
     checkServer = await startCheckServer().catch((err) => {
       console.error('check page server:', err.message);
       return null;

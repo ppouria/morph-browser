@@ -1,7 +1,7 @@
 {
   "name": "morph-browser",
   "version": "1.5.0",
-  "description": "Morph Browser — run isolated browser profiles with their own data, proxy and fingerprint",
+  "description": "Morph Browser \u2014 run isolated browser profiles with their own data, proxy and fingerprint",
   "private": true,
   "main": "src/main.js",
   "scripts": {
@@ -85,7 +85,13 @@
       "provider": "github",
       "owner": "ppouria",
       "repo": "morph-browser"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "extensions",
+        "to": "extensions"
+      }
+    ]
   },
   "dependencies": {
     "countries-and-timezones": "^3.11.0",

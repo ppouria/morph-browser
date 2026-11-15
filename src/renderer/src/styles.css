@@ -479,3 +479,69 @@ html[data-theme="dark"] {
   font-size: 12px;
   cursor: default;
 }
+
+
+.extensions-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.extension-card {
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(127, 127, 127, 0.04);
+  transition: border-color 140ms ease, opacity 140ms ease;
+}
+
+.extension-card:hover { border-color: rgba(127, 127, 127, 0.32); }
+.extension-card.is-off { opacity: 0.58; }
+
+.extension-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.extension-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 9px;
+  background: rgba(91, 124, 250, 0.14);
+  color: #6d8cff;
+  font-size: 18px;
+}
+
+.extension-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.extension-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.extension-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}

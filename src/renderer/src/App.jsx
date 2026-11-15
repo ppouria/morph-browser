@@ -3,11 +3,12 @@ import {
   Alert, App as AntApp, Button, ConfigProvider, Layout, Popover, Progress, Space, Typography, theme,
 } from 'antd';
 import {
-  AppstoreOutlined, ApiOutlined, CloudDownloadOutlined, DeleteOutlined, DownloadOutlined,
+  AppstoreAddOutlined, AppstoreOutlined, ApiOutlined, CloudDownloadOutlined, DeleteOutlined, DownloadOutlined,
   GithubOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import ProfilesPage from './ProfilesPage';
+import ExtensionsPage from './ExtensionsPage';
 import ProxiesPage from './ProxiesPage';
 import SettingsPage from './SettingsPage';
 import TrashPage from './TrashPage';
@@ -20,6 +21,7 @@ const { Title, Text } = Typography;
 const NAV = [
   { key: 'profiles', icon: <AppstoreOutlined />, label: 'Profiles' },
   { key: 'proxies', icon: <ApiOutlined />, label: 'Proxies' },
+  { key: 'extensions', icon: <AppstoreAddOutlined />, label: 'Extensions' },
   { key: 'trash', icon: <DeleteOutlined />, label: 'Trash' },
 ];
 
@@ -97,6 +99,7 @@ function Shell() {
   const [profiles, setProfiles] = useState([]);
   const [trash, setTrash] = useState([]);
   const [proxies, setProxies] = useState([]);
+  const [extensions, setExtensions] = useState([]);
   const [majors, setMajors] = useState([]);
   const [kernels, setKernels] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -118,15 +121,17 @@ function Shell() {
   }, [isDark]);
 
   const refresh = useCallback(async () => {
-    const [nextProfiles, nextProxies, nextSettings, nextTrash] = await Promise.all([
+    const [nextProfiles, nextProxies, nextExtensions, nextSettings, nextTrash] = await Promise.all([
       api.listProfiles(),
       api.listProxies(),
+      api.listExtensions(),
       api.getSettings(),
       api.listTrash(),
     ]);
     setProfiles(nextProfiles);
     setTrash(nextTrash);
     setProxies(nextProxies);
+    setExtensions(nextExtensions);
     setSettings(nextSettings);
     setThemeMode(nextSettings.theme || 'system');
     setLoading(false);
@@ -181,6 +186,7 @@ function Shell() {
   const pageTitle = useMemo(() => ({
     profiles: { title: 'Profiles', subtitle: 'Isolated Chrome profiles with their own data, proxy and fingerprint.' },
     proxies: { title: 'Proxies', subtitle: 'Saved proxies you can attach to any profile.' },
+    extensions: { title: 'Extensions', subtitle: 'Chrome extensions loaded into every Chromium profile at launch.' },
     trash: { title: 'Trash', subtitle: 'Deleted profiles stay here until you restore or purge them.' },
     settings: { title: 'Settings', subtitle: 'Everything runs on this machine. Nothing is uploaded.' },
   }[page]), [page]);
@@ -380,6 +386,14 @@ function Shell() {
                     if (!window.confirm(`Delete the saved proxy "${proxy.name}"?`)) return;
                     await run(() => api.deleteProxy(proxy.id), 'Proxy deleted');
                   }}
+                />
+              )}
+
+              {page === 'extensions' && (
+                <ExtensionsPage
+                  extensions={extensions}
+                  loading={loading}
+                  onRefresh={refresh}
                 />
               )}
 
