@@ -1,6 +1,6 @@
 # Morph Browser 1.5.0
 
-This release fixes the GitHub timezone issue and opens profiles fullscreen.
+This release fixes the GitHub timezone issue and opens profiles in a maximized window.
 
 ## Fixed
 
@@ -10,7 +10,8 @@ This release fixes the GitHub timezone issue and opens profiles fullscreen.
   - when both are blocked, the country saved with the proxy is used (`DE` → `Europe/Berlin`);
   - provider timezone strings are validated before reaching Chromium.
 - **Custom timezone** now has a searchable list of every IANA timezone instead of a free-text field.
-- Profiles open **fullscreen**: Chromium uses `--start-fullscreen`, Firefox opens in kiosk mode.
+- Profiles open **maximized to the host display** (windowed fullscreen), not in F11 fullscreen mode,
+  so a spoofed profile screen no longer forces the window onto a different resolution.
 
 ## From 1.4.0
 

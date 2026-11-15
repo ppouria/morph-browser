@@ -42,8 +42,9 @@ on the local machine: there is no account, no cloud sync and no team service.
 - If both IP providers are blocked, the country saved with the proxy is used as a fallback, so
   `Based on IP` still resolves to the proxy country (for example `DE` → `Europe/Berlin`) instead of
   leaking the host timezone. Custom timezone has a searchable list of every IANA zone.
-- Every profile opens fullscreen: Chromium uses `--start-fullscreen`, Firefox opens in kiosk mode.
-  The browser's usual shortcut (or Alt+F4) closes or leaves it.
+- Every profile opens as a maximized window that fills the current display (windowed fullscreen), so
+  it uses the real monitor resolution rather than the profile's spoofed screen. Normal browser chrome
+  and the taskbar stay visible.
 
 ## Fingerprints
 
