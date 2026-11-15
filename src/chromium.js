@@ -97,16 +97,33 @@ function buildArgs({
   webRtcFlags = [],
   extraFlags = [],
   noSandbox = false,
+  extensionDebugging = false,
 }) {
   const args = [
     `--user-data-dir=${profileDir}`,
     `--remote-debugging-port=${debugPort}`,
     '--no-first-run',
     '--no-default-browser-check',
+    // Browser background traffic goes through the proxy too. These switches cut component updates,
+    // metrics, sync, Safe Browsing pings and other requests that are not the page the user opened.
+    '--disable-background-networking',
+    '--disable-component-update',
+    '--disable-component-extensions-with-background-pages',
+    '--disable-default-apps',
+    '--disable-sync',
+    '--no-pings',
+    '--disable-domain-reliability',
+    '--disable-client-side-phishing-detection',
+    '--safebrowsing-disable-auto-update',
+    '--metrics-recording-only',
+    '--disable-breakpad',
+    '--disable-features=OptimizationHints,MediaRouter,Translate,AutofillServerCommunication,CalculateNativeWinOcclusion,InterestFeedContentSuggestions,CertificateTransparencyComponentUpdater,NetworkTimeServiceQuerying',
   ];
   // A downloaded build cannot carry a root-owned setuid helper, so the browser may have to run
   // without its sandbox. This is only used as a fallback after the sandboxed launch failed.
   if (noSandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
+  // Needed for Extensions.loadUnpacked; without it the extensions manager cannot load anything.
+  if (extensionDebugging) args.push('--enable-unsafe-extension-debugging');
   if (proxyServer) args.push(`--proxy-server=${proxyServer}`);
   if (userAgent) args.push(`--user-agent=${userAgent}`);
   if (acceptLanguages) {
@@ -137,8 +154,9 @@ function launch({
   extraFlags = [],
   env = {},
   noSandbox = false,
+  extensionDebugging = false,
 }) {
-  const args = buildArgs({ profileDir, debugPort, proxyServer, startUrls, userAgent, acceptLanguages, windowSize, webRtcFlags, extraFlags, noSandbox });
+  const args = buildArgs({ profileDir, debugPort, proxyServer, startUrls, userAgent, acceptLanguages, windowSize, webRtcFlags, extraFlags, noSandbox, extensionDebugging });
   const child = spawn(executable, args, { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...env } });
 
   // Chromium explains a refused start on stderr; keeping the tail makes the failure readable.

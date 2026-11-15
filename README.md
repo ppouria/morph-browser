@@ -59,6 +59,20 @@ on the local machine: there is no account, no cloud sync and no team service.
   timezone is set with the POSIX `TZ` variable, so it is honoured on Linux and macOS; Windows
   Firefox may keep the system timezone.
 
+## Extensions
+
+- The **Extensions** tab manages unpacked Chrome extensions globally. Enabled extensions are loaded
+  into every Chromium profile before its first page, through the DevTools Extensions domain. This is
+  required because Google Chrome 137+ ignores the old `--load-extension` switch.
+- Two built-in extensions are included and enabled by default:
+  - **Morph Traffic Saver** blocks common ad and tracker domains, pauses autoplay until the user
+    interacts, pauses media in hidden tabs, and removes speculative prefetch/prerender requests.
+  - **Morph Tab Snoozer** discards inactive background tabs after 20 minutes.
+- Add any unpacked extension folder from the tab. Built-ins can be disabled but not deleted; local
+  extensions can be removed. Firefox profiles do not use this manager.
+- Chromium launches also disable background networking, component updates, sync, metrics, crash
+  reporting and Safe Browsing pings, so browser housekeeping does not consume the profile proxy.
+
 ## Android emulation
 
 - A profile OS can be set to **Android (emulated)**. The desktop browser then reports an Android

@@ -143,6 +143,9 @@ test('firefox preferences carry the proxy, user agent and language', () => {
   assert.match(prefs, /media\.peerconnection\.ice\.proxy_only", true/);
   assert.match(prefs, /geo\.enabled", false/);
   assert.match(prefs, /browser\.sessionstore\.resume_from_crash", false/);
+  assert.match(prefs, /network\.prefetch-next", false/);
+  assert.match(prefs, /network\.http\.speculative-parallel-limit", 0/);
+  assert.match(prefs, /app\.normandy\.enabled", false/);
 });
 
 test('firefox command line opens the start pages in the profile', () => {

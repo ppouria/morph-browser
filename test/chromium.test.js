@@ -44,6 +44,20 @@ test('returns null when no browser is installed', () => {
   assert.equal(findChromium({ platform: 'darwin', env: {}, exists: () => false }), null);
 });
 
+test('launches cut browser background traffic', () => {
+  const args = buildArgs({ profileDir: '/data/p_1', debugPort: 9222 });
+  assert.ok(args.includes('--disable-background-networking'));
+  assert.ok(args.includes('--disable-component-update'));
+  assert.ok(args.includes('--disable-sync'));
+});
+
+test('extension debugging is enabled only when extensions are loaded', () => {
+  const plain = buildArgs({ profileDir: '/data/p_1', debugPort: 9222 });
+  const withExtensions = buildArgs({ profileDir: '/data/p_1', debugPort: 9222, extensionDebugging: true });
+  assert.ok(!plain.includes('--enable-unsafe-extension-debugging'));
+  assert.ok(withExtensions.includes('--enable-unsafe-extension-debugging'));
+});
+
 test('profiles open maximized to the display, not in fullscreen mode', () => {
   const args = buildArgs({ profileDir: '/data/p_1', debugPort: 9222 });
   assert.ok(args.includes('--start-maximized'));
