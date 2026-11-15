@@ -117,6 +117,8 @@ function buildArgs({
     args.push(`--window-size=${windowSize.width},${windowSize.height}`);
     args.push('--window-position=40,40');
   }
+  // Every profile opens fullscreen; the user can leave it with the browser's usual shortcut.
+  args.push('--start-fullscreen');
   args.push(...webRtcFlags, ...extraFlags);
   return args.concat(startUrls);
 }

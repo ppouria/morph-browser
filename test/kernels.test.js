@@ -147,9 +147,9 @@ test('firefox preferences carry the proxy, user agent and language', () => {
 
 test('firefox command line opens the start pages in the profile', () => {
   const args = buildArgs({ profileDir: '/tmp/p', startUrls: ['https://example.com'], windowSize: { width: 1366, height: 768 } });
-  assert.deepEqual(args.slice(0, 3), ['-profile', '/tmp/p', '-no-remote']);
-  assert.deepEqual(args.slice(3, 7), ['-width', '1366', '-height', '768']);
-  assert.equal(args[7], 'https://example.com');
+  assert.deepEqual(args.slice(0, 4), ['-profile', '/tmp/p', '-no-remote', '-kiosk']);
+  assert.deepEqual(args.slice(4, 8), ['-width', '1366', '-height', '768']);
+  assert.equal(args[8], 'https://example.com');
   assert.match(firefoxUserAgent('windows', '158.0.1'), /Windows NT 10\.0.*Firefox\/158\.0/);
 });
 
