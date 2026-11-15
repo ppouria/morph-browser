@@ -520,3 +520,29 @@ test('a no-proxy profile clears its proxy and keeps the setting on save', () => 
   assert.equal(store.getProfile(profile.id).noProxy, false);
   assert.equal(store.getProfile(profile.id).proxy.type, 'socks5');
 });
+
+test('extensions can be seeded, disabled and removed', () => {
+  const store = createStore(tmpDir());
+  store.ensureExtension({
+    id: 'builtin-test',
+    name: 'Built-in test',
+    version: '1.0.0',
+    path: '/tmp/builtin-test',
+    builtin: true,
+  });
+  assert.equal(store.listExtensions().length, 1);
+  store.setExtensionEnabled('builtin-test', false);
+  assert.equal(store.listExtensions()[0].enabled, false);
+  assert.throws(() => store.removeExtension('builtin-test'), /built-in/);
+
+  store.addExtension({
+    id: 'ext_test',
+    name: 'Local test',
+    version: '2.0.0',
+    path: '/tmp/ext-test',
+    builtin: false,
+  });
+  assert.equal(store.listExtensions().length, 2);
+  store.removeExtension('ext_test');
+  assert.deepEqual(store.listExtensions().map((extension) => extension.id), ['builtin-test']);
+});
