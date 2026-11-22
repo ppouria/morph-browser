@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Card, Col, Divider, Input, InputNumber, Row, Space, Switch, Tag, Typography,
+  Alert, AutoComplete, Button, Card, Col, Divider, Input, InputNumber, Row, Space, Switch, Tag, Typography,
 } from 'antd';
 import {
   ApiOutlined, ChromeOutlined, CopyOutlined, GlobalOutlined, LockOutlined, ReloadOutlined, ToolOutlined,
@@ -43,19 +43,29 @@ function toolRows(rows) {
 }
 
 export default function McpPage({ settings, onSettings, notify }) {
-  const mcp = settings.mcp || { enabled: false, port: 19777, token: '' };
+  const mcp = settings.mcp || { enabled: false, host: '127.0.0.1', port: 19777, token: '', publicHost: '' };
+  const [host, setHost] = useState(mcp.host || '127.0.0.1');
+  const [publicHost, setPublicHost] = useState(mcp.publicHost || '');
   const [port, setPort] = useState(mcp.port || 19777);
   const [status, setStatus] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+  const [platform, setPlatform] = useState('');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => setHost(mcp.host || '127.0.0.1'), [mcp.host]);
+  useEffect(() => setPublicHost(mcp.publicHost || ''), [mcp.publicHost]);
   useEffect(() => setPort(mcp.port || 19777), [mcp.port]);
+  useEffect(() => {
+    api.mcpNetwork().then(setAddresses).catch(() => {});
+    api.appInfo().then((info) => setPlatform(info.platform)).catch(() => {});
+  }, []);
   useEffect(() => {
     let active = true;
     const load = () => api.mcpStatus().then((result) => { if (active) setStatus(result); }).catch(() => {});
     load();
     const timer = setInterval(load, 4000);
     return () => { active = false; clearInterval(timer); };
-  }, [mcp.enabled, mcp.port]);
+  }, [mcp.enabled, mcp.host, mcp.publicHost, mcp.port]);
 
   const patch = async (value, success) => {
     setBusy(true);
@@ -87,7 +97,16 @@ export default function McpPage({ settings, onSettings, notify }) {
   };
 
   const portNumber = Number(mcp.port) || 19777;
-  const url = `http://127.0.0.1:${portNumber}/mcp`;
+  const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(mcp.host);
+  const displayHost = mcp.publicHost || (['0.0.0.0', '::'].includes(mcp.host) ? '127.0.0.1' : (mcp.host || '127.0.0.1'));
+  const urlHost = String(displayHost).includes(':') && !String(displayHost).startsWith('[') ? `[${displayHost}]` : displayHost;
+  const url = `http://${urlHost}:${portNumber}/mcp`;
+  const hostSuggestions = [
+    { value: '127.0.0.1', label: '127.0.0.1 — local only' },
+    { value: '0.0.0.0', label: '0.0.0.0 — all interfaces' },
+    { value: 'localhost', label: 'localhost' },
+    ...addresses.map((address) => ({ value: address.address, label: `${address.address} — ${address.name}` })),
+  ];
   const token = mcp.token || '';
   const config = JSON.stringify({
     mcpServers: {
@@ -97,10 +116,11 @@ export default function McpPage({ settings, onSettings, notify }) {
       },
     },
   }, null, 2);
+  const npx = platform === 'win32' ? 'npx.cmd' : 'npx';
   const stdioConfig = JSON.stringify({
     mcpServers: {
       'morph-browser': {
-        command: 'npx',
+        command: npx,
         args: ['-y', 'mcp-remote', url, '--header', `Authorization: Bearer ${token}`],
       },
     },
@@ -109,7 +129,7 @@ export default function McpPage({ settings, onSettings, notify }) {
   const serverState = status && status.error
     ? { type: 'error', text: `Server failed: ${status.error}` }
     : status && status.running
-      ? { type: 'success', text: `Listening on 127.0.0.1:${status.port}` }
+      ? { type: 'success', text: `Listening on ${status.host || mcp.host}:${status.port}${status.publicHost ? ` · clients use ${status.publicHost}` : ''}` }
       : mcp.enabled
         ? { type: 'info', text: 'Starting the local server…' }
         : { type: 'warning', text: 'MCP server is off' };
@@ -128,7 +148,7 @@ export default function McpPage({ settings, onSettings, notify }) {
             </Space>
             <Text type="secondary" style={{ display: 'block', marginTop: 2 }}>
               Let an AI client create, edit and open profiles, then control the browser it opened.
-              Only localhost is bound; every request needs the token.
+              Bind locally or to a Tailscale/network address; every request still needs the token.
             </Text>
           </div>
           <Switch
@@ -150,12 +170,61 @@ export default function McpPage({ settings, onSettings, notify }) {
           <Card title={<Space size={8}><ToolOutlined />Server settings</Space>} size="small">
             <Space direction="vertical" size={10} style={{ width: '100%' }}>
               <div>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Listen address</Text>
+                <AutoComplete
+                  style={{ width: '100%' }}
+                  value={host}
+                  options={hostSuggestions}
+                  onChange={setHost}
+                  placeholder="127.0.0.1, 0.0.0.0, or a Tailscale IP"
+                  filterOption={(input, option) => String(option.value).toLowerCase().includes(input.toLowerCase())}
+                />
+                <Button size="small" style={{ marginTop: 6 }} loading={busy} onClick={() => patch({ mcp: { host } }, 'MCP listen address saved')}>
+                  Save listen address
+                </Button>
+                {!loopback && (
+                  <Alert
+                    style={{ marginTop: 8 }}
+                    type="warning"
+                    showIcon
+                    message="Listening beyond localhost"
+                    description="Other devices that can reach this address can use the token-protected endpoint. Prefer a Tailscale IP or restrict access with a firewall/ACL."
+                  />
+                )}
+              </div>
+
+              <div>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Public address for copied clients</Text>
+                <AutoComplete
+                  style={{ width: '100%' }}
+                  value={publicHost}
+                  options={hostSuggestions.filter((item) => item.value !== '0.0.0.0')}
+                  onChange={setPublicHost}
+                  placeholder="Optional: Tailscale IP or MagicDNS name"
+                  filterOption={(input, option) => String(option.value).toLowerCase().includes(input.toLowerCase())}
+                />
+                <Space size={6} style={{ marginTop: 6 }} wrap>
+                  <Button size="small" loading={busy} onClick={() => patch({ mcp: { publicHost } }, 'MCP public address saved')}>
+                    Save public address
+                  </Button>
+                  {addresses.map((address) => (
+                    <Tag key={address.address} bordered={false} style={{ cursor: 'pointer' }} onClick={() => setPublicHost(address.address)}>
+                      {address.address}
+                    </Tag>
+                  ))}
+                </Space>
+                <Text type="secondary" style={{ display: 'block', fontSize: 11 }}>
+                  Used in the copied endpoint/config. Leave empty for 127.0.0.1.
+                </Text>
+              </div>
+
+              <div>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Port</Text>
                 <Space.Compact style={{ width: '100%' }}>
                   <InputNumber style={{ width: 140 }} min={1024} max={65535} value={port} onChange={setPort} />
                   <Button loading={busy} onClick={() => patch({ mcp: { port: Number(port) } }, 'MCP port saved')}>Save port</Button>
                 </Space.Compact>
-                <Text type="secondary" style={{ fontSize: 11 }}>The server binds to 127.0.0.1 only.</Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>The server binds only to the listen address above.</Text>
               </div>
 
               <div>
@@ -234,8 +303,8 @@ export default function McpPage({ settings, onSettings, notify }) {
         style={{ marginTop: 14 }}
         type="warning"
         showIcon
-        message="Local control is powerful"
-        description="The token grants profile deletion and full browser automation. Keep it private and disable the server when you are not using an AI client. The server never binds to a non-loopback address."
+        message="Browser control is powerful"
+        description="The token grants profile deletion and full browser automation. Keep it private, disable the server when you are not using an AI client, and put a firewall or Tailscale ACL in front of any non-loopback listen address."
       />
     </div>
   );

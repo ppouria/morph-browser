@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('api', {
   checkProxy: (proxy, options) => ipcRenderer.invoke('proxy:check', proxy, options),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   mcpStatus: () => ipcRenderer.invoke('mcp:status'),
+  mcpNetwork: () => ipcRenderer.invoke('mcp:network'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),
   appInfo: () => ipcRenderer.invoke('app:info'),

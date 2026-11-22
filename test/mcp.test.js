@@ -61,3 +61,44 @@ test('the MCP endpoint exposes profile tools and rejects a missing token', async
   assert.equal(body.profiles[0].name, 'MCP profile');
   await client.close();
 });
+
+test('the MCP server can bind a non-loopback address', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'morph-mcp-net-'));
+  const store = createStore(dir);
+  const port = await freePort();
+  const service = createMcpService({
+    version: 'test',
+    getStore: () => store,
+    launchProfile: async () => {},
+    stopProfile: async () => {},
+    running: new Map(),
+    view: (profile) => ({ ...profile, running: false, debugPort: null }),
+    profileDir: () => dir,
+    removeProfile: () => {},
+    notify: () => {},
+  });
+  await service.applySettings({
+    enabled: true,
+    host: '0.0.0.0',
+    publicHost: '127.0.0.1',
+    port,
+    token: 'network-token',
+  });
+  t.after(async () => {
+    await service.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const status = service.getStatus();
+  assert.equal(status.running, true);
+  assert.equal(status.host, '0.0.0.0');
+  assert.equal(status.url, `http://127.0.0.1:${port}/mcp`);
+
+  const transport = new StreamableHTTPClientTransport(new URL(status.url), {
+    requestInit: { headers: { Authorization: 'Bearer network-token' } },
+  });
+  const client = new Client({ name: 'network-test', version: '1.0.0' });
+  await client.connect(transport);
+  const tools = await client.listTools();
+  assert.ok(tools.tools.some((tool) => tool.name === 'list_profiles'));
+  await client.close();
+});

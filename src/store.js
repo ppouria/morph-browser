@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const net = require('node:net');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { MAJOR_RE } = require('./browsers');
@@ -51,8 +52,10 @@ const DEFAULT_SETTINGS = {
   window: null,
   mcp: {
     enabled: false,
+    host: '127.0.0.1',
     port: 19777,
     token: null,
+    publicHost: '',
   },
 };
 const TOTP_RE = /^[A-Z2-7]{16,64}$/;
@@ -364,6 +367,25 @@ function requireText(value, label, max) {
   if (!text) throw new Error(`${label} is required`);
   if (text.length > max) throw new Error(`${label} is too long`);
   return text;
+}
+
+function normalizeMcpHost(value) {
+  const host = String(value || '').trim().replace(/^\[(.*)\]$/, '$1');
+  if (!host) return '127.0.0.1';
+  if (['127.0.0.1', 'localhost', '0.0.0.0', '::', '[::]'].includes(host)) return host;
+  if (net.isIP(host)) return host;
+  if (/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})$/.test(host)) return host;
+  throw new Error('MCP listen address must be an IP address or hostname');
+}
+
+function normalizeMcpPublicHost(value) {
+  const host = String(value || '').trim().replace(/^\[(.*)\]$/, '$1');
+  if (!host) return '';
+  if (['0.0.0.0', '::'].includes(host)) throw new Error('MCP public host must be a specific address clients can reach');
+  // The client address is a hostname or IP only; no scheme, port or path.
+  if (net.isIP(host)) return host;
+  if (/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252})$/.test(host)) return host;
+  throw new Error('MCP public host must be an IP address or hostname');
 }
 
 function normalizeExtension(entry) {
@@ -802,6 +824,8 @@ function createStore(dir) {
         const next = { ...data.settings.mcp };
         const input = patch.mcp || {};
         if ('enabled' in input) next.enabled = Boolean(input.enabled);
+        if ('host' in input) next.host = normalizeMcpHost(input.host);
+        if ('publicHost' in input) next.publicHost = normalizeMcpPublicHost(input.publicHost);
         if ('port' in input) {
           const port = Number(input.port);
           if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('MCP port must be between 1024 and 65535');

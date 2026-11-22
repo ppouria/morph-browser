@@ -38,6 +38,10 @@ function safeEqual(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function urlHost(host) {
+  return String(host).includes(':') && !String(host).startsWith('[') ? `[${host}]` : String(host);
+}
+
 function createMcpService({
   version = '1.0.0',
   getStore,
@@ -48,6 +52,7 @@ function createMcpService({
   profileDir,
   removeProfile,
   notify,
+  defaultBrowserVersion,
 }) {
   const connections = new Map(); // profile id -> { browser, port }
   const activePages = new Map(); // profile id -> page
@@ -109,6 +114,10 @@ function createMcpService({
   async function connect(profileId) {
     const entry = running.get(profileId);
     if (!entry) throw new Error('The profile is not running');
+    const profile = store().getProfile(profileId);
+    if (profile && profile.kernel === 'firefox') {
+      throw new Error('MCP browser control supports Chromium profiles only. Launch a Chrome/Chromium profile for browser tools.');
+    }
     const cached = connections.get(profileId);
     if (cached && cached.port === entry.debugPort) return cached;
     if (cached) await cached.browser.close().catch(() => {});
@@ -204,9 +213,16 @@ function createMcpService({
       browser_version: z.string().optional(),
       fingerprint: z.any().optional().describe('Partial fingerprint object; omitted fields use defaults'),
     }, async (args) => {
+      const kernel = args.kernel || 'chrome';
+      let browserVersion = args.browser_version || '';
+      // A cached Chromium build is needed on Linux, and the fingerprint kernel needs a build on every
+      // OS. Use the newest available version when the caller did not choose one.
+      if (!browserVersion && defaultBrowserVersion) {
+        browserVersion = (await defaultBrowserVersion(kernel).catch(() => null)) || '';
+      }
       const input = {
         name: args.name,
-        kernel: args.kernel || 'chrome',
+        kernel,
         os: args.os || 'windows',
         group: args.group || '',
         tags: args.tags || [],
@@ -214,7 +230,7 @@ function createMcpService({
         startUrls: args.start_urls || [],
         proxy: args.no_proxy ? null : proxyInput(args.proxy),
         noProxy: Boolean(args.no_proxy),
-        browserVersion: args.browser_version || '',
+        browserVersion,
       };
       if (args.fingerprint) input.fingerprint = args.fingerprint;
       const profile = store().saveProfile(input);
@@ -471,7 +487,7 @@ function createMcpService({
 
   let httpServer = null;
   let config = null;
-  let status = { running: false, port: null, enabled: false, error: null };
+  let status = { running: false, host: '127.0.0.1', publicHost: '', port: null, enabled: false, error: null };
 
   function authMiddleware(expectedToken) {
     return (req, res, next) => {
@@ -487,7 +503,23 @@ function createMcpService({
   }
 
   function buildApp() {
-    const app = createMcpExpressApp({ host: '127.0.0.1' });
+    const options = { host: config.host };
+    if (config.publicHost) {
+      // URL.hostname reports IPv6 literals with brackets, so the allow-list must match that form.
+      const hostHeader = (value) => {
+        const text = String(value).trim().toLowerCase();
+        if (!text) return text;
+        return text.includes(':') && !text.startsWith('[') ? `[${text}]` : text;
+      };
+      options.allowedHosts = [...new Set([
+        hostHeader(config.publicHost),
+        '127.0.0.1',
+        'localhost',
+        '[::1]',
+        hostHeader(config.host),
+      ])];
+    }
+    const app = createMcpExpressApp(options);
     app.use(authMiddleware(config.token));
     app.post('/mcp', async (req, res) => {
       const server = createServer();
@@ -523,11 +555,16 @@ function createMcpService({
     await stop();
     config = {
       enabled: Boolean(nextConfig.enabled),
+      host: String(nextConfig.host || '127.0.0.1'),
       port: Number(nextConfig.port) || 19777,
       token: String(nextConfig.token || ''),
+      publicHost: String(nextConfig.publicHost || ''),
     };
     if (!config.enabled) {
-      status = { running: false, port: config.port, enabled: false, error: null };
+      status = {
+        running: false, host: config.host, publicHost: config.publicHost,
+        port: config.port, enabled: false, error: null,
+      };
       return status;
     }
     if (!config.token) throw new Error('MCP token is missing');
@@ -535,13 +572,16 @@ function createMcpService({
     await new Promise((resolve, reject) => {
       const server = http.createServer(app);
       server.once('error', reject);
-      server.listen(config.port, '127.0.0.1', () => {
+      server.listen(config.port, config.host, () => {
         server.removeListener('error', reject);
         httpServer = server;
         resolve();
       });
     });
-    status = { running: true, port: config.port, enabled: true, error: null };
+    status = {
+      running: true, host: config.host, publicHost: config.publicHost,
+      port: config.port, enabled: true, error: null,
+    };
     return status;
   }
 
@@ -554,7 +594,14 @@ function createMcpService({
     // Do not call browser.close(): it would close the profile's Chromium. Playwright connections
     // are only dropped when the browser disconnects or this process exits.
     activePages.clear();
-    status = { running: false, port: config ? config.port : null, enabled: false, error: null };
+    status = {
+      running: false,
+      host: config ? config.host : '127.0.0.1',
+      publicHost: config ? config.publicHost : '',
+      port: config ? config.port : null,
+      enabled: false,
+      error: null,
+    };
   }
 
   async function applySettings(settings) {
@@ -564,6 +611,8 @@ function createMcpService({
     } catch (err) {
       status = {
         running: false,
+        host: String(wanted.host || '127.0.0.1'),
+        publicHost: String(wanted.publicHost || ''),
         port: Number(wanted.port) || 19777,
         enabled: Boolean(wanted.enabled),
         error: err.message,
@@ -575,7 +624,15 @@ function createMcpService({
   return {
     applySettings,
     stop,
-    getStatus: () => ({ ...status, url: status.running ? `http://127.0.0.1:${status.port}/mcp` : null }),
+    getStatus: () => {
+      const displayHost = status.publicHost
+        || (['0.0.0.0', '::'].includes(status.host) ? '127.0.0.1' : (status.host || '127.0.0.1'));
+      return {
+        ...status,
+        displayHost,
+        url: status.running ? `http://${urlHost(displayHost)}:${status.port}/mcp` : null,
+      };
+    },
   };
 }
 

@@ -554,6 +554,11 @@ test('MCP settings generate a token and validate the port', () => {
   assert.equal(enabled.mcp.port, 19888);
   assert.match(enabled.mcp.token, /^[0-9a-f]{48}$/);
   assert.throws(() => store.setSettings({ mcp: { port: 80 } }), /between 1024 and 65535/);
+  const exposed = store.setSettings({ mcp: { host: '0.0.0.0', publicHost: '100.64.0.5' } });
+  assert.equal(exposed.mcp.host, '0.0.0.0');
+  assert.equal(exposed.mcp.publicHost, '100.64.0.5');
+  assert.throws(() => store.setSettings({ mcp: { host: 'bad host; rm -rf /' } }), /IP address or hostname/);
+  assert.throws(() => store.setSettings({ mcp: { publicHost: '0.0.0.0' } }), /specific address/);
   const reset = store.resetSettings();
   assert.equal(reset.mcp.enabled, false);
 });

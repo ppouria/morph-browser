@@ -1,4 +1,5 @@
 const dns = require('node:dns');
+const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -1145,6 +1146,17 @@ function setupIpc() {
     return settings;
   });
   ipcMain.handle('mcp:status', () => (mcpService ? mcpService.getStatus() : null));
+  ipcMain.handle('mcp:network', () => {
+    const addresses = [];
+    for (const [name, entries] of Object.entries(os.networkInterfaces())) {
+      for (const entry of entries || []) {
+        const ipv4 = entry.family === 'IPv4' || entry.family === 4;
+        if (!ipv4 || entry.internal || entry.address.startsWith('169.254.')) continue;
+        addresses.push({ name, address: entry.address });
+      }
+    }
+    return addresses;
+  });
 
   ipcMain.handle('updates:state', () => (updater ? updater.getState() : null));
   ipcMain.handle('updates:check', () => updater && updater.check());
@@ -1303,6 +1315,11 @@ if (!app.requestSingleInstanceLock()) {
       profileDir,
       removeProfile,
       notify,
+      defaultBrowserVersion: async (kernel) => {
+        if (!kernels) return null;
+        const versions = await kernels.listVersions(kernel).catch(() => []);
+        return versions[0] || null;
+      },
     });
     await mcpService.applySettings(store.getSettings());
     checkServer = await startCheckServer().catch((err) => {

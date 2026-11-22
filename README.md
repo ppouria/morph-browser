@@ -75,16 +75,20 @@ on the local machine: there is no account, no cloud sync and no team service.
 
 ## MCP
 
-- The **MCP** tab runs a local Streamable HTTP MCP server on `127.0.0.1` with a bearer token. It is
-  off by default; enable it in that tab, then copy the generated client config.
+- The **MCP** tab runs a Streamable HTTP MCP server with a bearer token. It is off by default; enable
+  it there, then copy the generated client config.
+- The listen address is configurable. Keep `127.0.0.1` for local-only access, use `0.0.0.0` for a
+  Tailscale/LAN-facing server, or bind a specific interface address. The tab also has a public
+  address field used in copied client configs, and lists detected interfaces (including `tailscale0`).
 - Profile tools: list, read, create, edit, delete, launch and stop profiles. Browser tools use the
-  open-source `playwright-core` package to attach to the running profile's DevTools port and offer
-  navigation, ARIA snapshots, screenshots, clicks, typing, key presses, JavaScript evaluation and tab
-  management.
-- The server is built with the official Model Context Protocol SDK. It never listens on a non-loopback
-  address, and every request needs the token shown in the tab.
+  open-source `playwright-core` package to attach to a running Chromium profile's DevTools port and
+  offer navigation, ARIA snapshots, screenshots, clicks, typing, key presses, JavaScript evaluation
+  and tab management. Browser control is Chromium-only; Firefox profiles still support profile tools.
+- The server is built with the official Model Context Protocol SDK. Every request needs the token
+  shown in the tab. When listening beyond loopback, protect the port with Tailscale ACLs or a firewall.
 - Claude Desktop, Cursor and other remote-MCP clients can use the HTTP endpoint; clients that only
-  support stdio can bridge through `npx -y mcp-remote` as shown in the tab.
+  support stdio can bridge through `npx -y mcp-remote` as shown in the tab. Windows config uses
+  `npx.cmd`.
 
 ## Android emulation
 
