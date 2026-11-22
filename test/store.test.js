@@ -546,3 +546,14 @@ test('extensions can be seeded, disabled and removed', () => {
   store.removeExtension('ext_test');
   assert.deepEqual(store.listExtensions().map((extension) => extension.id), ['builtin-test']);
 });
+
+test('MCP settings generate a token and validate the port', () => {
+  const store = createStore(tmpDir());
+  const enabled = store.setSettings({ mcp: { enabled: true, port: 19888 } });
+  assert.equal(enabled.mcp.enabled, true);
+  assert.equal(enabled.mcp.port, 19888);
+  assert.match(enabled.mcp.token, /^[0-9a-f]{48}$/);
+  assert.throws(() => store.setSettings({ mcp: { port: 80 } }), /between 1024 and 65535/);
+  const reset = store.resetSettings();
+  assert.equal(reset.mcp.enabled, false);
+});
