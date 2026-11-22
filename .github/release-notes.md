@@ -1,43 +1,37 @@
-# Morph Browser 1.6.0
+# Morph Browser 1.7.0
 
-This release adds an extension manager and cuts background proxy traffic.
+This release exposes Morph Browser to AI clients through MCP.
 
-## Extensions
+## MCP
 
-- New **Extensions** tab manages unpacked Chrome extensions globally. Enabled extensions load into
-  every Chromium profile before its first page through the DevTools Extensions domain, which works
-  for system Chrome (Google Chrome 137+ ignores `--load-extension`).
-- Built-in **Morph Traffic Saver** blocks common ad/tracker domains, pauses autoplay until the user
-  interacts, pauses media in hidden tabs, and removes speculative prefetch/prerender requests.
-- Built-in **Morph Tab Snoozer** discards inactive background tabs after 20 minutes.
-- Add any unpacked extension folder. Disable built-ins or remove local ones. Firefox profiles do not
-  use this manager.
+- New **MCP** tab starts a local Streamable HTTP MCP server on `127.0.0.1` with a bearer token.
+  Enable it, choose the port, rotate the token, and copy the generated client config from the tab.
+- Profile tools: list, read, create, edit, delete, launch and stop profiles.
+- Browser tools: navigate, ARIA snapshot, screenshot, click, type, press keys, evaluate JavaScript,
+  manage tabs, history, reload and wait. Browser control uses the open-source `playwright-core`
+  package attached to the running profile's DevTools port.
+- The server is built with the official Model Context Protocol SDK. It never binds to a non-loopback
+  address, and every request requires the token. Disable it at any time; turning it off does not close
+  running profiles.
+- The tab includes HTTP client config and a `npx -y mcp-remote` stdio bridge for clients that need
+  one.
 
-## Less proxy traffic
+## From 1.6.0
 
-- Chromium no longer fetches background component updates, sync data, metrics, crash reports, Domain
-  Reliability pings or Safe Browsing updates through the profile proxy.
-- Firefox prefetching, speculative connections, telemetry, studies and extension updates are
-  disabled.
-
-## From 1.5.0
-
-- **Based on IP** timezone now resolves the proxy country even when both geo providers are blocked
-  (`DE` → `Europe/Berlin`).
-- Custom timezone is a searchable full IANA list.
-- Profiles open in a maximized window that fills the host display instead of F11 fullscreen.
-- Per-profile proxy traffic counters, total traffic, No proxy mode and the timezone fix.
+- Extensions tab with built-in ad/tracker and tab-snoozer extensions.
+- Background networking, component updates, sync and metrics are disabled to cut proxy traffic.
+- Based-on-IP timezone fallback, searchable timezone list, windowed fullscreen and total traffic.
 
 ## Limits
 
-Browser-level fixes cannot hide TLS/JA3, HTTP/2 fingerprints, WebGL capability limits, font
-rasterisation or behaviour. Use a clean, country-consistent sticky proxy and one stable identity per
-account. Do not use this project to bypass identity, payment or KYC checks.
+The MCP token grants powerful local control. Keep it private. Browser-level fixes cannot hide
+TLS/JA3, HTTP/2 fingerprints, WebGL capability limits or behaviour. Do not use this project to bypass
+identity, payment or KYC checks.
 
 ## Install
 
-- Windows: `morph-browser-1.6.0-windows-setup.exe` or portable
-- macOS: `morph-browser-1.6.0-macos-arm64.dmg` / `morph-browser-1.6.0-macos-x64.dmg`
-- Linux: `morph-browser-1.6.0-linux-x86_64.AppImage` or `morph-browser-1.6.0-linux-amd64.deb`
+- Windows: `morph-browser-1.7.0-windows-setup.exe` or portable
+- macOS: `morph-browser-1.7.0-macos-arm64.dmg` / `morph-browser-1.7.0-macos-x64.dmg`
+- Linux: `morph-browser-1.7.0-linux-x86_64.AppImage` or `morph-browser-1.7.0-linux-amd64.deb`
 
 Profile data is kept on update and uninstall.
