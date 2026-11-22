@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   parseProxy: (text, defaultType) => ipcRenderer.invoke('proxy:parse', text, defaultType),
   checkProxy: (proxy, options) => ipcRenderer.invoke('proxy:check', proxy, options),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  mcpStatus: () => ipcRenderer.invoke('mcp:status'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   resetSettings: () => ipcRenderer.invoke('settings:reset'),
   appInfo: () => ipcRenderer.invoke('app:info'),

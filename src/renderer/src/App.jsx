@@ -4,11 +4,12 @@ import {
 } from 'antd';
 import {
   AppstoreAddOutlined, AppstoreOutlined, ApiOutlined, CloudDownloadOutlined, DeleteOutlined, DownloadOutlined,
-  GithubOutlined, SettingOutlined,
+  GithubOutlined, RobotOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import api from './api';
 import ProfilesPage from './ProfilesPage';
 import ExtensionsPage from './ExtensionsPage';
+import McpPage from './McpPage';
 import ProxiesPage from './ProxiesPage';
 import SettingsPage from './SettingsPage';
 import TrashPage from './TrashPage';
@@ -22,6 +23,7 @@ const NAV = [
   { key: 'profiles', icon: <AppstoreOutlined />, label: 'Profiles' },
   { key: 'proxies', icon: <ApiOutlined />, label: 'Proxies' },
   { key: 'extensions', icon: <AppstoreAddOutlined />, label: 'Extensions' },
+  { key: 'mcp', icon: <RobotOutlined />, label: 'MCP' },
   { key: 'trash', icon: <DeleteOutlined />, label: 'Trash' },
 ];
 
@@ -187,6 +189,7 @@ function Shell() {
     profiles: { title: 'Profiles', subtitle: 'Isolated Chrome profiles with their own data, proxy and fingerprint.' },
     proxies: { title: 'Proxies', subtitle: 'Saved proxies you can attach to any profile.' },
     extensions: { title: 'Extensions', subtitle: 'Chrome extensions loaded into every Chromium profile at launch.' },
+    mcp: { title: 'MCP', subtitle: 'Connect an AI client to manage profiles and control the browser.' },
     trash: { title: 'Trash', subtitle: 'Deleted profiles stay here until you restore or purge them.' },
     settings: { title: 'Settings', subtitle: 'Everything runs on this machine. Nothing is uploaded.' },
   }[page]), [page]);
@@ -395,6 +398,10 @@ function Shell() {
                   loading={loading}
                   onRefresh={refresh}
                 />
+              )}
+
+              {page === 'mcp' && settings && (
+                <McpPage settings={settings} onSettings={applySettings} notify={message} />
               )}
 
               {page === 'trash' && (

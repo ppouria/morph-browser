@@ -287,6 +287,7 @@ export default function SettingsPage({ settings, kernels = [], update, themeMode
           <AppProxyCard settings={settings} patch={patch} notify={notify} />
         </div>
 
+
         <div className="settings-card">
           <Card title={<Space size={8}><DesktopOutlined />Window</Space>} size="small">
             <Space direction="vertical" size={6} style={{ width: '100%' }}>

@@ -49,6 +49,11 @@ const DEFAULT_SETTINGS = {
     randomFingerprint: false,
   },
   window: null,
+  mcp: {
+    enabled: false,
+    port: 19777,
+    token: null,
+  },
 };
 const TOTP_RE = /^[A-Z2-7]{16,64}$/;
 const VERSION_RE = /^[0-9][0-9A-Za-z._-]{0,30}$/;
@@ -429,6 +434,10 @@ function createStore(dir) {
           ...DEFAULT_SETTINGS.upstreamProxy,
           ...((parsed.settings || {}).upstreamProxy || {}),
         },
+        mcp: {
+          ...DEFAULT_SETTINGS.mcp,
+          ...((parsed.settings || {}).mcp || {}),
+        },
       },
       nextNumber: Number.isInteger(parsed.nextNumber) ? parsed.nextNumber : 0,
     };
@@ -757,6 +766,7 @@ function createStore(dir) {
         ...DEFAULT_SETTINGS,
         defaults: { ...DEFAULT_SETTINGS.defaults },
         upstreamProxy: { ...DEFAULT_SETTINGS.upstreamProxy },
+        mcp: { ...DEFAULT_SETTINGS.mcp },
       };
       save(data);
       return data.settings;
@@ -787,6 +797,19 @@ function createStore(dir) {
         if ('autoDownload' in input) next.autoDownload = Boolean(input.autoDownload);
         if ('installOnQuit' in input) next.installOnQuit = Boolean(input.installOnQuit);
         data.settings.updates = next;
+      }
+      if ('mcp' in patch) {
+        const next = { ...data.settings.mcp };
+        const input = patch.mcp || {};
+        if ('enabled' in input) next.enabled = Boolean(input.enabled);
+        if ('port' in input) {
+          const port = Number(input.port);
+          if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('MCP port must be between 1024 and 65535');
+          next.port = port;
+        }
+        if ('token' in input) next.token = input.token ? String(input.token) : null;
+        if (next.enabled && !next.token) next.token = crypto.randomBytes(24).toString('hex');
+        data.settings.mcp = next;
       }
       if ('upstreamProxy' in patch) {
         const input = patch.upstreamProxy || {};

@@ -94,10 +94,13 @@
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "countries-and-timezones": "^3.11.0",
     "electron-updater": "^6.8.9",
+    "playwright-core": "^1.65.1",
     "proxy-chain": "^3.0.1",
-    "socks": "^2.8.10"
+    "socks": "^2.8.10",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@ant-design/icons": "^5.6.1",

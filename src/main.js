@@ -14,6 +14,7 @@ const { findChromium, detectBrowserMajor, launch, stop, resolveMacBundle } = req
 const { startRelay, checkProxy, probeProxy, lookupGeo, lookupProxyLocation } = require('./proxy');
 const { startChain } = require('./chain');
 const { parseProxyString } = require('./proxy-parse');
+const { createMcpService } = require('./mcp');
 const { createKernelRegistry } = require('./kernels');
 const { MAJOR_OPTIONS, userAgentFor, uaMetadata, resolveFingerprint, buildInjectionScript, flagsFor, buildKernelFlags } = require('./fingerprint');
 const { prepareBrowser } = require('./cdp');
@@ -130,6 +131,7 @@ function proxyTrafficTracker(id) {
 }
 const launching = new Set(); // ids still starting up; a download can make this take minutes
 let store;
+let mcpService = null;
 let kernels;
 let browserCache;
 let win;
@@ -353,6 +355,15 @@ function removeProfileWindowIcon(profile) {
   const cls = `morph-p${profile.number}`;
   fs.rmSync(path.join(app.getPath('home'), '.local', 'share', 'applications', `${cls}.desktop`), { force: true });
   fs.rmSync(path.join(app.getPath('home'), '.local', 'share', 'icons', 'hicolor', '256x256', 'apps', `${cls}.png`), { force: true });
+}
+
+function removeProfile(id) {
+  const profile = store.getProfile(id);
+  if (!profile) throw new Error('profile not found');
+  store.purgeProfile(id);
+  fs.rmSync(profileDir(id), { recursive: true, force: true });
+  removeProfileWindowIcon(profile);
+  notify();
 }
 
 function isCheckUrl(url) {
@@ -1120,7 +1131,7 @@ function setupIpc() {
     const detected = findChromium({ configuredPath: settings.chromiumPath, vendorDir: VENDOR_DIR });
     return { ...settings, detected, dataDir: app.getPath('userData') };
   });
-  ipcMain.handle('settings:set', (_e, patch) => {
+  ipcMain.handle('settings:set', async (_e, patch) => {
     const settings = store.setSettings(patch);
     if ('launchOnBoot' in patch) {
       try {
@@ -1130,15 +1141,18 @@ function setupIpc() {
       }
     }
     if ('updates' in patch && updater) updater.applySettings(settings);
+    if ('mcp' in patch && mcpService) await mcpService.applySettings(settings);
     return settings;
   });
+  ipcMain.handle('mcp:status', () => (mcpService ? mcpService.getStatus() : null));
 
   ipcMain.handle('updates:state', () => (updater ? updater.getState() : null));
   ipcMain.handle('updates:check', () => updater && updater.check());
   ipcMain.handle('updates:download', () => updater && updater.download());
   ipcMain.handle('updates:install', () => updater && updater.install());
-  ipcMain.handle('settings:reset', () => {
+  ipcMain.handle('settings:reset', async () => {
     const settings = store.resetSettings();
+    if (mcpService) await mcpService.applySettings(settings);
     notify();
     return settings;
   });
@@ -1265,6 +1279,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     for (const id of running.keys()) stopProfile(id);
     flushProxyUsage();
+    if (mcpService) mcpService.stop();
     if (checkServer) checkServer.close();
   });
 
@@ -1274,6 +1289,22 @@ if (!app.requestSingleInstanceLock()) {
     ensureDevDesktopEntry();
     store = createStore(app.getPath('userData'));
     seedBuiltinExtensions();
+    const storedMcp = store.getSettings().mcp;
+    if (storedMcp && storedMcp.enabled && !storedMcp.token) {
+      store.setSettings({ mcp: { enabled: true } });
+    }
+    mcpService = createMcpService({
+      version: app.getVersion(),
+      getStore: () => store,
+      launchProfile,
+      stopProfile,
+      running,
+      view,
+      profileDir,
+      removeProfile,
+      notify,
+    });
+    await mcpService.applySettings(store.getSettings());
     checkServer = await startCheckServer().catch((err) => {
       console.error('check page server:', err.message);
       return null;

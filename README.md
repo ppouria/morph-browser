@@ -73,6 +73,19 @@ on the local machine: there is no account, no cloud sync and no team service.
 - Chromium launches also disable background networking, component updates, sync, metrics, crash
   reporting and Safe Browsing pings, so browser housekeeping does not consume the profile proxy.
 
+## MCP
+
+- The **MCP** tab runs a local Streamable HTTP MCP server on `127.0.0.1` with a bearer token. It is
+  off by default; enable it in that tab, then copy the generated client config.
+- Profile tools: list, read, create, edit, delete, launch and stop profiles. Browser tools use the
+  open-source `playwright-core` package to attach to the running profile's DevTools port and offer
+  navigation, ARIA snapshots, screenshots, clicks, typing, key presses, JavaScript evaluation and tab
+  management.
+- The server is built with the official Model Context Protocol SDK. It never listens on a non-loopback
+  address, and every request needs the token shown in the tab.
+- Claude Desktop, Cursor and other remote-MCP clients can use the HTTP endpoint; clients that only
+  support stdio can bridge through `npx -y mcp-remote` as shown in the tab.
+
 ## Android emulation
 
 - A profile OS can be set to **Android (emulated)**. The desktop browser then reports an Android
